@@ -1,35 +1,10 @@
-package main
+package webdav
 
 import (
-	"encoding/json"
 	"encoding/xml"
 	"errors"
-	"io/ioutil"
-	"log"
 	"time"
-
-	"github.com/io-developer/davsync/webdav"
-	//	"github.com/studio-b12/gowebdav"
 )
-
-type DavOpt struct {
-	BaseURI   string
-	Token     string
-	TokenType string
-	User      string
-	Pass      string
-}
-
-func readOptFile(path string) (DavOpt, error) {
-	bytes, err := ioutil.ReadFile(path)
-	if err != nil {
-		log.Fatal(err)
-	}
-	opt := DavOpt{}
-	json.Unmarshal(bytes, &opt)
-
-	return opt, nil
-}
 
 type PropfindMultistatus struct {
 	XMLName   xml.Name   `xml:"DAV: multistatus"`
@@ -94,39 +69,3 @@ type Prop struct {
 	ResourceType   string   `xml:"DAV: resourcetype"`
 }
 */
-
-func main() {
-	opt, err := readOptFile("./.davsync")
-	if err != nil {
-		log.Fatalln("readOptFile err", err)
-	}
-
-	log.Printf("opt: %#v\n", opt)
-
-	client := webdav.NewClient()
-	client.BaseURI = opt.BaseURI
-	client.AuthToken = opt.Token
-	client.AuthTokenType = opt.TokenType
-	client.AuthUser = opt.User
-	client.AuthPass = opt.Pass
-
-	propfindMulti, err := client.Propfind("/Загрузки/")
-	if err != nil {
-		log.Fatalln("Propfind err", err)
-	}
-
-	log.Printf("\n\npropfindMulti: %#v\n", propfindMulti)
-
-	for _, resource := range propfindMulti.Propfinds {
-		log.Println("Resource ", resource.Href)
-		log.Println("  Status", resource.Status)
-		log.Println("  IsCollection", resource.IsCollection())
-		log.Println("  DisplayName", resource.DisplayName)
-		log.Println("  CreationDate", resource.CreationDate.Format("2006-01-02 15:04:05 -0700"))
-		log.Println("  LastModified", resource.LastModified.Format("2006-01-02 15:04:05 -0700"))
-		log.Println("  ContentType", resource.ContentType)
-		log.Println("  ContentLength", resource.ContentLength)
-		log.Println("  Etag", resource.Etag)
-
-	}
-}
