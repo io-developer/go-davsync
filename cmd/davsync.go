@@ -14,9 +14,11 @@ import (
 )
 
 type DavOpt struct {
-	BaseURI string
-	User    string
-	Pass    string
+	BaseURI   string
+	Token     string
+	TokenType string
+	User      string
+	Pass      string
 }
 
 func readOptFile(path string) (DavOpt, error) {
@@ -36,13 +38,20 @@ type PropfindMultistatus struct {
 }
 
 type Propfind struct {
-	XMLName        xml.Name  `xml:"DAV: response"`
-	Href           string    `xml:"href"`
-	Status         string    `xml:"propstat>status"`
-	CreationDate   DavTime   `xml:"propstat>prop>creationdate"`
-	LastModifyDate DavTime   `xml:"propstat>prop>getlastmodified"`
-	DisplayName    string    `xml:"propstat>prop>displayname"`
-	IsCollection   *struct{} `xml:"propstat>prop>resourcetype>collection"`
+	XMLName                xml.Name  `xml:"DAV: response"`
+	Href                   string    `xml:"href"`
+	Status                 string    `xml:"propstat>status"`
+	CreationDate           DavTime   `xml:"propstat>prop>creationdate"`
+	LastModified           DavTime   `xml:"propstat>prop>getlastmodified"`
+	DisplayName            string    `xml:"propstat>prop>displayname"`
+	Etag                   string    `xml:"propstat>prop>getetag"`
+	ContentType            string    `xml:"propstat>prop>getcontenttype"`
+	ContentLength          int64     `xml:"propstat>prop>getcontentlength"`
+	ResourceTypeCollection *struct{} `xml:"propstat>prop>resourcetype>collection"`
+}
+
+func (c *Propfind) IsCollection() bool {
+	return c.ResourceTypeCollection != nil
 }
 
 type DavTime struct {
@@ -95,23 +104,7 @@ func main() {
 
 	log.Printf("opt: %#v\n", opt)
 
-	/*
-		c := gowebdav.NewClient(baseURI, login, pass)
-
-		err := c.Connect()
-		if err != nil {
-			log.Fatalln("Connect error", err)
-		}
-
-		infos, err := c.ReadDir("/backup/")
-		if err != nil {
-			log.Fatalln("ReadDir error", err)
-		}
-
-		log.Println("ReadDir infos", infos)
-	*/
-
-	path := "//backup/conf.pwd/"
+	path := "/Загрузки/"
 	reqUri := fmt.Sprintf("%s/%s", strings.TrimRight(opt.BaseURI, "/"), strings.Trim(path, "/"))
 	reqMethod := "PROPFIND"
 	/*
@@ -134,7 +127,16 @@ func main() {
 		log.Fatalln("NewRequest err", err)
 	}
 
-	req.SetBasicAuth(opt.User, opt.Pass)
+	if opt.Token != "" {
+		authPrefix := opt.TokenType
+		if authPrefix == "" {
+			authPrefix = "OAuth"
+		}
+		req.Header.Add("Authorization", fmt.Sprintf("%s %s", authPrefix, opt.Token))
+	} else {
+		req.SetBasicAuth(opt.User, opt.Pass)
+	}
+
 	req.Header.Add("Content-Type", "application/xml;charset=UTF-8")
 	req.Header.Add("Accept", "application/xml,text/xml")
 	req.Header.Add("Accept-Charset", "utf-8")
@@ -164,4 +166,17 @@ func main() {
 	}
 
 	log.Printf("propfindMulti: %#v\n", propfindMulti)
+
+	for _, resource := range propfindMulti.Propfinds {
+		log.Println("Resource ", resource.Href)
+		log.Println("  Status", resource.Status)
+		log.Println("  IsCollection", resource.IsCollection())
+		log.Println("  DisplayName", resource.DisplayName)
+		log.Println("  CreationDate", resource.CreationDate.Format("2006-01-02 15:04:05 -0700"))
+		log.Println("  LastModified", resource.LastModified.Format("2006-01-02 15:04:05 -0700"))
+		log.Println("  ContentType", resource.ContentType)
+		log.Println("  ContentLength", resource.ContentLength)
+		log.Println("  Etag", resource.Etag)
+
+	}
 }
