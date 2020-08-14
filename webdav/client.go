@@ -60,21 +60,22 @@ func (c *Client) readTree(
 		return
 	}
 	for _, item := range some.Propfinds {
-		itemPath := item.Href
-		if _, exists := outNodes[itemPath]; exists {
+		absPath := item.GetHrefUnicode()
+		relPath := strings.TrimPrefix(absPath, c.BasePath)
+		if _, exists := outNodes[relPath]; exists {
 			continue
 		}
-		*outPaths = append(*outPaths, itemPath)
-		outNodes[itemPath] = model.Node{
-			AbsPath:  item.Href,
-			Path:     itemPath,
+		*outPaths = append(*outPaths, relPath)
+		outNodes[relPath] = model.Node{
+			AbsPath:  absPath,
+			Path:     relPath,
 			Name:     item.DisplayName,
 			IsDir:    item.IsCollection(),
 			Size:     item.ContentLength,
 			UserData: item,
 		}
-		if item.IsCollection() && itemPath != path {
-			c.readTree(itemPath, outPaths, outNodes)
+		if item.IsCollection() && relPath != path {
+			c.readTree(relPath, outPaths, outNodes)
 		}
 	}
 	return

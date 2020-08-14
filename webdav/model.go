@@ -3,6 +3,7 @@ package webdav
 import (
 	"encoding/xml"
 	"errors"
+	"net/url"
 	"time"
 )
 
@@ -24,8 +25,15 @@ type Propfind struct {
 	ResourceTypeCollection *struct{} `xml:"propstat>prop>resourcetype>collection"`
 }
 
-func (c *Propfind) IsCollection() bool {
-	return c.ResourceTypeCollection != nil
+func (p *Propfind) IsCollection() bool {
+	return p.ResourceTypeCollection != nil
+}
+
+func (p *Propfind) GetHrefUnicode() string {
+	if decoded, err := url.QueryUnescape(p.Href); err == nil {
+		return decoded
+	}
+	return p.Href
 }
 
 type DavTime struct {
