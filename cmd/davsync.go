@@ -8,6 +8,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/io-developer/davsync/fs"
 	"github.com/io-developer/davsync/webdav"
 	//	"github.com/studio-b12/gowebdav"
 )
@@ -75,27 +76,20 @@ func (t *DavTime) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	return errors.New("Cant parse time: " + elemVal)
 }
 
-/*
-type PropStat struct {
-	XMLName xml.Name `xml:"DAV: propstat"`
-	Status  string   `xml:"status"`
-	//	Prop    Prop     `xml:"prop"`
-	CreationDate   string `xml:"prop>creationdate"`
-	LastModifyDate string `xml:"prop>getlastmodified"`
-	DisplayName    string `xml:"prop>displayname"`
-}
-*/
-/*
-type Prop struct {
-	XMLName        xml.Name `xml:"DAV: prop"`
-	CreationDate   string   `xml:"DAV: creationdate"`
-	LastModifyDate string   `xml:"DAV: getlastmodified"`
-	DisplayName    string   `xml:"DAV: displayname"`
-	ResourceType   string   `xml:"DAV: resourcetype"`
-}
-*/
-
 func main() {
+	fsClient := fs.NewClient("/home/iodev/projects/local/davsync/.dav-test-input")
+	paths, nodes, err := fsClient.ReadTree()
+	if err != nil {
+		log.Fatalln("ReadTree err", err)
+	}
+	for _, path := range paths {
+		log.Println(path)
+	}
+	for path, node := range nodes {
+		log.Printf("%s\n%#v\n\n", path, node)
+	}
+
+	return
 	opt, err := readOptFile("./.davsync")
 	if err != nil {
 		log.Fatalln("readOptFile err", err)
@@ -127,6 +121,5 @@ func main() {
 		log.Println("  ContentType", resource.ContentType)
 		log.Println("  ContentLength", resource.ContentLength)
 		log.Println("  Etag", resource.Etag)
-
 	}
 }
