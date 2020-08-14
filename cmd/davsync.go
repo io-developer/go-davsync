@@ -89,7 +89,6 @@ func main() {
 		log.Printf("%s\n%#v\n\n", path, node)
 	}
 
-	return
 	opt, err := readOptFile("./.davsync")
 	if err != nil {
 		log.Fatalln("readOptFile err", err)
@@ -104,22 +103,33 @@ func main() {
 	client.AuthUser = opt.User
 	client.AuthPass = opt.Pass
 
-	propfindMulti, err := client.Propfind("/Загрузки/")
+	propfindSome, err := client.PropfindSome("/Загрузки/", 1)
 	if err != nil {
 		log.Fatalln("Propfind err", err)
 	}
 
-	log.Printf("\n\npropfindMulti: %#v\n", propfindMulti)
-
-	for _, resource := range propfindMulti.Propfinds {
-		log.Println("Resource ", resource.Href)
-		log.Println("  Status", resource.Status)
-		log.Println("  IsCollection", resource.IsCollection())
-		log.Println("  DisplayName", resource.DisplayName)
-		log.Println("  CreationDate", resource.CreationDate.Format("2006-01-02 15:04:05 -0700"))
-		log.Println("  LastModified", resource.LastModified.Format("2006-01-02 15:04:05 -0700"))
-		log.Println("  ContentType", resource.ContentType)
-		log.Println("  ContentLength", resource.ContentLength)
-		log.Println("  Etag", resource.Etag)
+	log.Printf("\n\nPropfindSome: %#v\n", propfindSome)
+	for _, propfind := range propfindSome.Propfinds {
+		logPropfind(propfind)
 	}
+
+	propfind, err := client.Propfind("/Загрузки/")
+	if err != nil {
+		log.Fatalln("Propfind err", err)
+	}
+
+	log.Printf("\n\nPropfind: %#v\n", propfindSome)
+	logPropfind(propfind)
+}
+
+func logPropfind(p webdav.Propfind) {
+	log.Println("Resource ", p.Href)
+	log.Println("  Status", p.Status)
+	log.Println("  IsCollection", p.IsCollection())
+	log.Println("  DisplayName", p.DisplayName)
+	log.Println("  CreationDate", p.CreationDate.Format("2006-01-02 15:04:05 -0700"))
+	log.Println("  LastModified", p.LastModified.Format("2006-01-02 15:04:05 -0700"))
+	log.Println("  ContentType", p.ContentType)
+	log.Println("  ContentLength", p.ContentLength)
+	log.Println("  Etag", p.Etag)
 }

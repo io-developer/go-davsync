@@ -2,16 +2,19 @@ package webdav
 
 import (
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
 type Client struct {
 	BaseURI       string
+	BasePath      string
 	AuthToken     string
 	AuthTokenType string
 	AuthUser      string
@@ -32,6 +35,11 @@ func NewClient() *Client {
 	}
 }
 
+/*
+func (c *Client) ReadTree() (paths []string, nodes map[string]model.Node, err error) {
+
+}
+*/
 func (c *Client) createRequest(method, path string, body io.Reader, headers map[string]string) (*http.Request, error) {
 	req, err := http.NewRequest(method, c.buildURI(path), body)
 	if err != nil {
@@ -75,31 +83,38 @@ func (c *Client) requestBytes(req *http.Request) ([]byte, error) {
 	return ioutil.ReadAll(resp.Body)
 }
 
-func (c *Client) Propfind(path string) (*PropfindMultistatus, error) {
-	result := &PropfindMultistatus{}
+func (c *Client) Propfind(path string) (result Propfind, err error) {
+	items, err := c.PropfindSome(path, 0)
+	if err != nil {
+		return
+	}
+	if len(items.Propfinds) != 1 {
+		errors.New(fmt.Sprintf("Expected one propfind, got %d", len(items.Propfinds)))
+	}
+	return items.Propfinds[0], nil
+}
 
+func (c *Client) PropfindSome(path string, depth int) (result PropfindSome, err error) {
+	if bytes, err := c.reqPropfind(path, depth); err == nil {
+		err = xml.Unmarshal(bytes, &result)
+	}
+	return
+}
+
+func (c *Client) reqPropfind(path string, depth int) ([]byte, error) {
 	reqBody := strings.NewReader(
 		"<d:propfind xmlns:d='DAV:'>" +
 			"<d:allprop/>" +
 			"</d:propfind>",
 	)
 	req, err := c.createRequest("PROPFIND", path, reqBody, map[string]string{
-		"Depth": "1",
+		"Depth": strconv.Itoa(depth),
 	})
 	if err != nil {
-		return result, err
+		return nil, err
 	}
+	bytes, err := c.requestBytes(req)
+	log.Println("Client.reqPropfind(): ", depth, string(bytes))
 
-	respBytes, err := c.requestBytes(req)
-	if err != nil {
-		return result, err
-	}
-
-	log.Println("Client.Propfind() respBytes: ", string(respBytes))
-
-	if err = xml.Unmarshal(respBytes, result); err != nil {
-		return result, err
-	}
-
-	return result, err
+	return bytes, err
 }

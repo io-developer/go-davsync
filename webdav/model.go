@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-type PropfindMultistatus struct {
+type PropfindSome struct {
 	XMLName   xml.Name   `xml:"DAV: multistatus"`
 	Propfinds []Propfind `xml:"response"`
 }
