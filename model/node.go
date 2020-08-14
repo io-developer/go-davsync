@@ -9,7 +9,7 @@ type Node struct {
 	Path     string
 	AbsPath  string
 	IsDir    bool
-	Size     int32
+	Size     int64
 	FileInfo *os.FileInfo
 }
 

@@ -96,14 +96,14 @@ func main() {
 
 	log.Printf("opt: %#v\n", opt)
 
-	client := webdav.NewClient()
-	client.BaseURI = opt.BaseURI
-	client.AuthToken = opt.Token
-	client.AuthTokenType = opt.TokenType
-	client.AuthUser = opt.User
-	client.AuthPass = opt.Pass
+	davClient := webdav.NewClient()
+	davClient.BaseURI = opt.BaseURI
+	davClient.AuthToken = opt.Token
+	davClient.AuthTokenType = opt.TokenType
+	davClient.AuthUser = opt.User
+	davClient.AuthPass = opt.Pass
 
-	propfindSome, err := client.PropfindSome("/Загрузки/", 1)
+	propfindSome, err := davClient.PropfindSome("/Загрузки/", 1)
 	if err != nil {
 		log.Fatalln("Propfind err", err)
 	}
@@ -113,13 +113,24 @@ func main() {
 		logPropfind(propfind)
 	}
 
-	propfind, err := client.Propfind("/Загрузки/")
+	propfind, err := davClient.Propfind("/Загрузки/")
 	if err != nil {
 		log.Fatalln("Propfind err", err)
 	}
 
 	log.Printf("\n\nPropfind: %#v\n", propfindSome)
 	logPropfind(propfind)
+
+	paths, nodes, err = davClient.ReadTree()
+	if err != nil {
+		log.Fatalln("ReadTree err", err)
+	}
+	for _, path := range paths {
+		log.Println(path)
+	}
+	for path, node := range nodes {
+		log.Printf("%s\n%#v\n\n", path, node)
+	}
 }
 
 func logPropfind(p webdav.Propfind) {

@@ -10,6 +10,9 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
+
+	"github.com/io-developer/davsync/model"
 )
 
 type Client struct {
@@ -19,6 +22,8 @@ type Client struct {
 	AuthTokenType string
 	AuthUser      string
 	AuthPass      string
+	RetryLimit    int
+	RetryDelay    time.Duration
 	httpClient    http.Client
 	baseHeaders   map[string]string
 }
@@ -32,14 +37,47 @@ func NewClient() *Client {
 			"Accept-Charset": "utf-8",
 			//"Accept-Encoding": "",
 		},
+		RetryLimit: 3,
+		RetryDelay: 1 * time.Second,
 	}
 }
 
-/*
 func (c *Client) ReadTree() (paths []string, nodes map[string]model.Node, err error) {
-
+	paths = []string{}
+	nodes = map[string]model.Node{}
+	err = c.readTree("/", &paths, nodes)
+	return
 }
-*/
+
+func (c *Client) readTree(
+	path string,
+	outPaths *[]string,
+	outNodes map[string]model.Node,
+) (err error) {
+	some, err := c.PropfindSome(path, 1)
+	if err != nil {
+		return
+	}
+	for _, item := range some.Propfinds {
+		itemPath := item.Href
+		if _, exists := outNodes[itemPath]; exists {
+			continue
+		}
+		*outPaths = append(*outPaths, itemPath)
+		outNodes[itemPath] = model.Node{
+			AbsPath: item.Href,
+			Path:    itemPath,
+			Name:    item.DisplayName,
+			IsDir:   item.IsCollection(),
+			Size:    item.ContentLength,
+		}
+		if item.IsCollection() && itemPath != path {
+			c.readTree(itemPath, outPaths, outNodes)
+		}
+	}
+	return
+}
+
 func (c *Client) createRequest(method, path string, body io.Reader, headers map[string]string) (*http.Request, error) {
 	req, err := http.NewRequest(method, c.buildURI(path), body)
 	if err != nil {
@@ -71,8 +109,19 @@ func (c *Client) auth(req *http.Request) *http.Request {
 	return req
 }
 
-func (c *Client) request(req *http.Request) (*http.Response, error) {
-	return c.httpClient.Do(req)
+func (c *Client) request(req *http.Request) (resp *http.Response, err error) {
+	for i := 0; i < c.RetryLimit; i++ {
+		resp, err = c.httpClient.Do(req)
+		if err != nil {
+			continue
+		}
+		if resp.StatusCode == 429 {
+			time.Sleep(c.RetryDelay)
+			continue
+		}
+		break
+	}
+	return
 }
 
 func (c *Client) requestBytes(req *http.Request) ([]byte, error) {
