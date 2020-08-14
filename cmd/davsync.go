@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io/ioutil"
 	"log"
+	"path/filepath"
 	"time"
 
 	"github.com/io-developer/davsync/fs"
@@ -77,6 +78,12 @@ func (t *DavTime) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 }
 
 func main() {
+	a := "/home/iodev"
+	b := "/"
+	log.Println("a", a)
+	log.Println("b", b)
+	log.Println("join", filepath.Join(a, b))
+
 	fsClient := fs.NewClient("/home/iodev/projects/local/davsync/.dav-test-input")
 	paths, nodes, err := fsClient.ReadTree()
 	if err != nil {
@@ -98,12 +105,13 @@ func main() {
 
 	davClient := webdav.NewClient()
 	davClient.BaseURI = opt.BaseURI
+	davClient.BasePath = "/Загрузки"
 	davClient.AuthToken = opt.Token
 	davClient.AuthTokenType = opt.TokenType
 	davClient.AuthUser = opt.User
 	davClient.AuthPass = opt.Pass
 
-	propfindSome, err := davClient.PropfindSome("/Загрузки/", 1)
+	propfindSome, err := davClient.PropfindSome("/", 1)
 	if err != nil {
 		log.Fatalln("Propfind err", err)
 	}
@@ -113,7 +121,7 @@ func main() {
 		logPropfind(propfind)
 	}
 
-	propfind, err := davClient.Propfind("/Загрузки/")
+	propfind, err := davClient.Propfind("/")
 	if err != nil {
 		log.Fatalln("Propfind err", err)
 	}
@@ -129,7 +137,7 @@ func main() {
 		log.Println(path)
 	}
 	for path, node := range nodes {
-		log.Printf("%s\n%#v\n\n", path, node)
+		log.Printf("\n%s\n%#v\n\n", path, node)
 	}
 }
 

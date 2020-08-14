@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -65,11 +66,12 @@ func (c *Client) readTree(
 		}
 		*outPaths = append(*outPaths, itemPath)
 		outNodes[itemPath] = model.Node{
-			AbsPath: item.Href,
-			Path:    itemPath,
-			Name:    item.DisplayName,
-			IsDir:   item.IsCollection(),
-			Size:    item.ContentLength,
+			AbsPath:  item.Href,
+			Path:     itemPath,
+			Name:     item.DisplayName,
+			IsDir:    item.IsCollection(),
+			Size:     item.ContentLength,
+			UserData: item,
 		}
 		if item.IsCollection() && itemPath != path {
 			c.readTree(itemPath, outPaths, outNodes)
@@ -79,7 +81,10 @@ func (c *Client) readTree(
 }
 
 func (c *Client) createRequest(method, path string, body io.Reader, headers map[string]string) (*http.Request, error) {
-	req, err := http.NewRequest(method, c.buildURI(path), body)
+	uri := c.buildURI(path)
+	log.Printf("createRequest\n  path: %s\n  uri: %s\n  method: %s\n\n", path, uri, method)
+
+	req, err := http.NewRequest(method, uri, body)
 	if err != nil {
 		return req, err
 	}
@@ -93,7 +98,8 @@ func (c *Client) createRequest(method, path string, body io.Reader, headers map[
 }
 
 func (c *Client) buildURI(path string) string {
-	return fmt.Sprintf("%s/%s", strings.TrimRight(c.BaseURI, "/"), strings.Trim(path, "/"))
+	uriPath := filepath.Join(c.BasePath, path)
+	return fmt.Sprintf("%s/%s", strings.TrimRight(c.BaseURI, "/"), strings.TrimLeft(uriPath, "/"))
 }
 
 func (c *Client) auth(req *http.Request) *http.Request {
@@ -134,13 +140,14 @@ func (c *Client) requestBytes(req *http.Request) ([]byte, error) {
 
 func (c *Client) Propfind(path string) (result Propfind, err error) {
 	items, err := c.PropfindSome(path, 0)
-	if err != nil {
-		return
+	if err == nil {
+		if len(items.Propfinds) == 1 {
+			result = items.Propfinds[0]
+		} else {
+			err = errors.New(fmt.Sprintf("Expected one propfind, got %d", len(items.Propfinds)))
+		}
 	}
-	if len(items.Propfinds) != 1 {
-		errors.New(fmt.Sprintf("Expected one propfind, got %d", len(items.Propfinds)))
-	}
-	return items.Propfinds[0], nil
+	return
 }
 
 func (c *Client) PropfindSome(path string, depth int) (result PropfindSome, err error) {
@@ -150,7 +157,7 @@ func (c *Client) PropfindSome(path string, depth int) (result PropfindSome, err 
 	return
 }
 
-func (c *Client) reqPropfind(path string, depth int) ([]byte, error) {
+func (c *Client) reqPropfind(path string, depth int) (bytes []byte, err error) {
 	reqBody := strings.NewReader(
 		"<d:propfind xmlns:d='DAV:'>" +
 			"<d:allprop/>" +
@@ -159,11 +166,12 @@ func (c *Client) reqPropfind(path string, depth int) ([]byte, error) {
 	req, err := c.createRequest("PROPFIND", path, reqBody, map[string]string{
 		"Depth": strconv.Itoa(depth),
 	})
+	log.Println("Client.reqPropfind(): ", path, depth)
 	if err != nil {
-		return nil, err
+		return
 	}
-	bytes, err := c.requestBytes(req)
-	log.Println("Client.reqPropfind(): ", depth, string(bytes))
+	bytes, err = c.requestBytes(req)
+	log.Println("  response: ", string(bytes))
 
-	return bytes, err
+	return
 }

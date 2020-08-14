@@ -11,6 +11,7 @@ type Node struct {
 	IsDir    bool
 	Size     int64
 	FileInfo *os.FileInfo
+	UserData interface{}
 }
 
 func (n Node) IsLocal() bool {
