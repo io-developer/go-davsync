@@ -2,16 +2,23 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"io/ioutil"
 	"log"
-	"path/filepath"
 
 	"github.com/io-developer/davsync/fs"
 	"github.com/io-developer/davsync/webdav"
 	//	"github.com/studio-b12/gowebdav"
 )
 
-type DavOpt struct {
+type Args struct {
+	localPath   string
+	remotePath  string
+	secretsFile string
+	secrets     Secrets
+}
+
+type Secrets struct {
 	BaseURI   string
 	Token     string
 	TokenType string
@@ -19,26 +26,58 @@ type DavOpt struct {
 	Pass      string
 }
 
-func readOptFile(path string) (DavOpt, error) {
-	bytes, err := ioutil.ReadFile(path)
-	if err != nil {
-		log.Fatal(err)
-	}
-	opt := DavOpt{}
-	json.Unmarshal(bytes, &opt)
+func parseArgs() Args {
+	localPath := flag.String("local", "./", "Local directory path. Example: /tmp/test")
+	remotePath := flag.String("remote", "/", "Webdav directory path. Example: /test")
+	secretsFile := flag.String("secrets", ".davsync", "JSON config for base URI and auth secrets")
+	flag.Parse()
 
-	return opt, nil
+	args := Args{
+		localPath:   *localPath,
+		remotePath:  *remotePath,
+		secretsFile: *secretsFile,
+	}
+
+	if *secretsFile != "" {
+		bytes, err := ioutil.ReadFile(*secretsFile)
+		log.Println("bytes", string(bytes))
+		if err != nil {
+			log.Fatal(err)
+		}
+		secrets := Secrets{}
+		err = json.Unmarshal(bytes, &secrets)
+		if err != nil {
+			log.Fatal(err)
+		}
+		args.secrets = secrets
+
+		log.Println("secrets", secrets)
+	}
+
+	return args
+}
+
+func createLocalClient(args Args) *fs.Client {
+	return fs.NewClient(args.localPath)
+}
+
+func createRemoteClient(args Args) *webdav.Client {
+	c := webdav.NewClient()
+	c.BaseURI = args.secrets.BaseURI
+	c.BasePath = args.remotePath
+	c.AuthToken = args.secrets.Token
+	c.AuthTokenType = args.secrets.TokenType
+	c.AuthUser = args.secrets.User
+	c.AuthPass = args.secrets.Pass
+	return c
 }
 
 func main() {
-	a := "/home/iodev"
-	b := "/"
-	log.Println("a", a)
-	log.Println("b", b)
-	log.Println("join", filepath.Join(a, b))
+	args := parseArgs()
+	log.Printf("CLI ARGS:\n%#v\n\n", args)
 
-	fsClient := fs.NewClient(".dav-test-input")
-	paths, nodes, err := fsClient.ReadTree()
+	local := createLocalClient(args)
+	paths, nodes, err := local.ReadTree()
 	if err != nil {
 		log.Fatalln("ReadTree err", err)
 	}
@@ -49,40 +88,8 @@ func main() {
 		log.Printf("%s\n%#v\n\n", path, node)
 	}
 
-	opt, err := readOptFile("./.davsync")
-	if err != nil {
-		log.Fatalln("readOptFile err", err)
-	}
-
-	log.Printf("opt: %#v\n", opt)
-
-	davClient := webdav.NewClient()
-	davClient.BaseURI = opt.BaseURI
-	davClient.BasePath = "/Загрузки"
-	davClient.AuthToken = opt.Token
-	davClient.AuthTokenType = opt.TokenType
-	davClient.AuthUser = opt.User
-	davClient.AuthPass = opt.Pass
-
-	propfindSome, err := davClient.PropfindSome("/", 1)
-	if err != nil {
-		log.Fatalln("Propfind err", err)
-	}
-
-	log.Printf("\n\nPropfindSome: %#v\n", propfindSome)
-	for _, propfind := range propfindSome.Propfinds {
-		logPropfind(propfind)
-	}
-
-	propfind, err := davClient.Propfind("/")
-	if err != nil {
-		log.Fatalln("Propfind err", err)
-	}
-
-	log.Printf("\n\nPropfind: %#v\n", propfindSome)
-	logPropfind(propfind)
-
-	paths, nodes, err = davClient.ReadTree()
+	remote := createRemoteClient(args)
+	paths, nodes, err = remote.ReadTree()
 	if err != nil {
 		log.Fatalln("ReadTree err", err)
 	}
@@ -92,16 +99,4 @@ func main() {
 	for path, node := range nodes {
 		log.Printf("\n%s\n%#v\n\n", path, node)
 	}
-}
-
-func logPropfind(p webdav.Propfind) {
-	log.Println("Resource ", p.Href)
-	log.Println("  Status", p.Status)
-	log.Println("  IsCollection", p.IsCollection())
-	log.Println("  DisplayName", p.DisplayName)
-	log.Println("  CreationDate", p.CreationDate.Format("2006-01-02 15:04:05 -0700"))
-	log.Println("  LastModified", p.LastModified.Format("2006-01-02 15:04:05 -0700"))
-	log.Println("  ContentType", p.ContentType)
-	log.Println("  ContentLength", p.ContentLength)
-	log.Println("  Etag", p.Etag)
 }
