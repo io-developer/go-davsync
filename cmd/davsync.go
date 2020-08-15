@@ -2,12 +2,9 @@ package main
 
 import (
 	"encoding/json"
-	"encoding/xml"
-	"errors"
 	"io/ioutil"
 	"log"
 	"path/filepath"
-	"time"
 
 	"github.com/io-developer/davsync/fs"
 	"github.com/io-developer/davsync/webdav"
@@ -33,50 +30,6 @@ func readOptFile(path string) (DavOpt, error) {
 	return opt, nil
 }
 
-type PropfindMultistatus struct {
-	XMLName   xml.Name   `xml:"DAV: multistatus"`
-	Propfinds []Propfind `xml:"response"`
-}
-
-type Propfind struct {
-	XMLName                xml.Name  `xml:"DAV: response"`
-	Href                   string    `xml:"href"`
-	Status                 string    `xml:"propstat>status"`
-	CreationDate           DavTime   `xml:"propstat>prop>creationdate"`
-	LastModified           DavTime   `xml:"propstat>prop>getlastmodified"`
-	DisplayName            string    `xml:"propstat>prop>displayname"`
-	Etag                   string    `xml:"propstat>prop>getetag"`
-	ContentType            string    `xml:"propstat>prop>getcontenttype"`
-	ContentLength          int64     `xml:"propstat>prop>getcontentlength"`
-	ResourceTypeCollection *struct{} `xml:"propstat>prop>resourcetype>collection"`
-}
-
-func (c *Propfind) IsCollection() bool {
-	return c.ResourceTypeCollection != nil
-}
-
-type DavTime struct {
-	time.Time
-}
-
-func (t *DavTime) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
-	var elemVal string
-	d.DecodeElement(&elemVal, &start)
-
-	formats := []string{
-		"Mon Jan 2 15:04:05 -0700 MST 2006",
-		"Mon, 02 Jan 2006 15:04:05 MST",
-		"2006-01-02T15:04:05Z",
-	}
-	for _, format := range formats {
-		if time, err := time.Parse(format, elemVal); err == nil {
-			*t = DavTime{time}
-			return nil
-		}
-	}
-	return errors.New("Cant parse time: " + elemVal)
-}
-
 func main() {
 	a := "/home/iodev"
 	b := "/"
@@ -84,7 +37,7 @@ func main() {
 	log.Println("b", b)
 	log.Println("join", filepath.Join(a, b))
 
-	fsClient := fs.NewClient("/home/iodev/projects/local/davsync/.dav-test-input")
+	fsClient := fs.NewClient(".dav-test-input")
 	paths, nodes, err := fsClient.ReadTree()
 	if err != nil {
 		log.Fatalln("ReadTree err", err)
