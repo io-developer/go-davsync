@@ -11,6 +11,17 @@ type Sync1Way struct {
 	src Client
 	dst Client
 	opt Sync1WayOpt
+
+	// sync-time data
+	srcPaths []string
+	srcNodes map[string]Node
+
+	dstPaths []string
+	dstNodes map[string]Node
+
+	bothPaths []string
+	addPaths  []string
+	delPaths  []string
 }
 
 func NewSync1Way(src, dst Client, opt Sync1WayOpt) *Sync1Way {
@@ -22,41 +33,37 @@ func NewSync1Way(src, dst Client, opt Sync1WayOpt) *Sync1Way {
 }
 
 func (s *Sync1Way) Sync() error {
-	srcPaths, srcNodes, err := s.src.ReadTree()
+	err := s.readTrees()
 	if err != nil {
 		return err
 	}
-	logTree(srcPaths, srcNodes)
 
-	dstPaths, dstNodes, err := s.dst.ReadTree()
+	s.diff()
+
+	err = s.addDirs()
 	if err != nil {
 		return err
-	}
-	logTree(dstPaths, dstNodes)
-
-	bothPaths, addPaths, delPaths := NodeComparePaths(srcNodes, dstNodes)
-	for _, path := range bothPaths {
-		log.Println("BOTH", path)
-	}
-	for _, path := range addPaths {
-		log.Println("ADD", path)
-	}
-	for _, path := range delPaths {
-		log.Println("DEL", path)
-	}
-
-	for _, path := range addPaths {
-		node := srcNodes[path]
-		if node.IsDir {
-			log.Println("TRY ADD DIR", path)
-			err := s.dst.Mkdir(path, true)
-			if err != nil {
-				return err
-			}
-		}
 	}
 
 	return nil
+}
+
+func (s *Sync1Way) readTrees() error {
+	var err error
+
+	s.srcPaths, s.srcNodes, err = s.src.ReadTree()
+	if err != nil {
+		return err
+	}
+	logTree(s.srcPaths, s.srcNodes)
+
+	s.dstPaths, s.dstNodes, err = s.dst.ReadTree()
+	if err != nil {
+		return err
+	}
+	logTree(s.dstPaths, s.dstNodes)
+
+	return err
 }
 
 func logTree(paths []string, nodes map[string]Node) {
@@ -66,4 +73,31 @@ func logTree(paths []string, nodes map[string]Node) {
 	for path, node := range nodes {
 		log.Printf("\n%s\n%#v\n\n", path, node)
 	}
+}
+
+func (s *Sync1Way) diff() {
+	s.bothPaths, s.addPaths, s.delPaths = NodeComparePaths(s.srcNodes, s.dstNodes)
+	for _, path := range s.bothPaths {
+		log.Println("BOTH", path)
+	}
+	for _, path := range s.addPaths {
+		log.Println("ADD", path)
+	}
+	for _, path := range s.delPaths {
+		log.Println("DEL", path)
+	}
+}
+
+func (s *Sync1Way) addDirs() error {
+	for _, path := range s.addPaths {
+		node := s.srcNodes[path]
+		if node.IsDir {
+			log.Println("TRY ADD DIR", path)
+			err := s.dst.Mkdir(path, true)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

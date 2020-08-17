@@ -26,9 +26,9 @@ func (c *Client) Mkdir(path string, recursive bool) error {
 	var code int
 	var err error
 	if recursive {
-		code, err = c.adapter.Mkcol(path)
-	} else {
 		code, err = c.adapter.MkcolRecursive(path)
+	} else {
+		code, err = c.adapter.Mkcol(path)
 	}
 	if err != nil {
 		return err

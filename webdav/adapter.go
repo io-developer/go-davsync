@@ -184,10 +184,12 @@ func (c *Adapter) Mkcol(path string) (code int, err error) {
 func (c *Adapter) MkcolRecursive(path string) (lastCode int, lastErr error) {
 	subpath := ""
 	for _, part := range strings.Split(path, "/") {
-		subpath += "/" + part
-		lastCode, lastErr = c.reqMkcol(subpath)
-		if lastErr != nil {
-			return
+		if part != "" {
+			subpath += "/" + part
+			lastCode, lastErr = c.reqMkcol(subpath)
+			if lastErr != nil {
+				return
+			}
 		}
 	}
 	return
