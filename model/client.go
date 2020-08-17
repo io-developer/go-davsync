@@ -5,8 +5,8 @@ import "io"
 type Client interface {
 	ReadTree() (paths []string, nodes map[string]Node, err error)
 
-	ReadFile(path string) (io.Reader, error)
+	MakeDir(path string, recursive bool) error
 
-	AddDir(path string, recursive bool) error
-	AddFile(path string, content io.Reader) error
+	ReadFile(path string) (reader io.ReadCloser, err error)
+	WriteFile(path string, content io.ReadCloser) error
 }

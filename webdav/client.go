@@ -23,7 +23,7 @@ func (c *Client) ReadTree() (paths []string, nodes map[string]model.Node, err er
 	return c.adapter.ReadTree()
 }
 
-func (c *Client) AddDir(path string, recursive bool) error {
+func (c *Client) MakeDir(path string, recursive bool) error {
 	var code int
 	var err error
 	if recursive {
@@ -37,10 +37,22 @@ func (c *Client) AddDir(path string, recursive bool) error {
 	if code == 201 {
 		return nil
 	}
-	return fmt.Errorf("Webdav AddDir (MKCOL) code: %d", code)
+	return fmt.Errorf("Webdav MakeDir (MKCOL) code: %d", code)
 }
 
-func (c *Client) AddFile(path string, content io.Reader) error {
+func (c *Client) ReadFile(path string) (reader io.ReadCloser, err error) {
+	reader, code, err := c.adapter.GetFile(path)
+	if err != nil {
+		return
+	}
+	if code == 200 {
+		return
+	}
+	err = fmt.Errorf("Webdav ReadFile (GET) code: %d", code)
+	return
+}
+
+func (c *Client) WriteFile(path string, content io.ReadCloser) error {
 	code, err := c.adapter.PutFile(path, content)
 	if err != nil {
 		return err
@@ -48,5 +60,5 @@ func (c *Client) AddFile(path string, content io.Reader) error {
 	if code == 201 {
 		return nil
 	}
-	return fmt.Errorf("Webdav AddFile (PUT) code: %d", code)
+	return fmt.Errorf("Webdav WriteFile (PUT) code: %d", code)
 }

@@ -9,7 +9,6 @@ import (
 	"log"
 	"net/http"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -55,7 +54,7 @@ func (c *Adapter) readTree(
 	outPaths *[]string,
 	outNodes map[string]model.Node,
 ) (err error) {
-	some, err := c.PropfindSome(path, 1)
+	some, err := c.PropfindSome(path, "infinity")
 	if err != nil {
 		return
 	}
@@ -75,7 +74,7 @@ func (c *Adapter) readTree(
 			UserData: item,
 		}
 		if item.IsCollection() && relPath != path {
-			c.readTree(relPath, outPaths, outNodes)
+			defer c.readTree(relPath, outPaths, outNodes)
 		}
 	}
 	return
@@ -140,7 +139,7 @@ func (c *Adapter) requestBytes(req *http.Request) ([]byte, error) {
 }
 
 func (c *Adapter) Propfind(path string) (result Propfind, err error) {
-	items, err := c.PropfindSome(path, 0)
+	items, err := c.PropfindSome(path, "0")
 	if err == nil {
 		if len(items.Propfinds) == 1 {
 			result = items.Propfinds[0]
@@ -151,21 +150,21 @@ func (c *Adapter) Propfind(path string) (result Propfind, err error) {
 	return
 }
 
-func (c *Adapter) PropfindSome(path string, depth int) (result PropfindSome, err error) {
+func (c *Adapter) PropfindSome(path string, depth string) (result PropfindSome, err error) {
 	if bytes, err := c.reqPropfind(path, depth); err == nil {
 		err = xml.Unmarshal(bytes, &result)
 	}
 	return
 }
 
-func (c *Adapter) reqPropfind(path string, depth int) (bytes []byte, err error) {
+func (c *Adapter) reqPropfind(path string, depth string) (bytes []byte, err error) {
 	reqBody := strings.NewReader(
 		"<d:propfind xmlns:d='DAV:'>" +
 			"<d:allprop/>" +
 			"</d:propfind>",
 	)
 	req, err := c.createRequest("PROPFIND", path, reqBody, map[string]string{
-		"Depth": strconv.Itoa(depth),
+		"Depth": depth,
 	})
 	log.Println("Client.reqPropfind(): ", path, depth)
 	if err != nil {
@@ -184,7 +183,7 @@ func (c *Adapter) Mkcol(path string) (code int, err error) {
 func (c *Adapter) MkcolRecursive(path string) (lastCode int, lastErr error) {
 	subpath := ""
 	for _, part := range strings.Split(path, "/") {
-		if part != "" {
+		if subpath == "" || part != "" {
 			subpath += "/" + part
 			lastCode, lastErr = c.reqMkcol(subpath)
 			if lastErr != nil {
@@ -204,6 +203,20 @@ func (c *Adapter) reqMkcol(path string) (code int, err error) {
 	if err != nil {
 		return
 	}
+	code = resp.StatusCode
+	return
+}
+
+func (c *Adapter) GetFile(path string) (r io.ReadCloser, code int, err error) {
+	req, err := c.createRequest("GET", path, nil, map[string]string{})
+	if err != nil {
+		return
+	}
+	resp, err := c.request(req)
+	if err != nil {
+		return
+	}
+	r = resp.Body
 	code = resp.StatusCode
 	return
 }

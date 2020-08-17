@@ -87,7 +87,7 @@ func main() {
 
 	err := sync.Sync()
 	if err != nil {
-		log.Fatalln("sync Sync()", err)
+		log.Panicln("sync Sync()", err)
 	}
 
 	log.Println("\n\nDone.")
