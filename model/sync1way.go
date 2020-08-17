@@ -37,14 +37,15 @@ func (s *Sync1Way) Sync() error {
 	if err != nil {
 		return err
 	}
-
 	s.diff()
-
 	err = s.addDirs()
 	if err != nil {
 		return err
 	}
-
+	err = s.addFiles()
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -93,7 +94,26 @@ func (s *Sync1Way) addDirs() error {
 		node := s.srcNodes[path]
 		if node.IsDir {
 			log.Println("TRY ADD DIR", path)
-			err := s.dst.Mkdir(path, true)
+			err := s.dst.AddDir(path, true)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Sync1Way) addFiles() error {
+	for _, path := range s.addPaths {
+		node := s.srcNodes[path]
+		if !node.IsDir {
+			log.Println("TRY ADD FILE", path)
+
+			reader, err := s.src.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			err = s.dst.AddFile(path, reader)
 			if err != nil {
 				return err
 			}

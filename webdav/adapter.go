@@ -207,3 +207,16 @@ func (c *Adapter) reqMkcol(path string) (code int, err error) {
 	code = resp.StatusCode
 	return
 }
+
+func (c *Adapter) PutFile(path string, body io.Reader) (code int, err error) {
+	req, err := c.createRequest("PUT", path, body, map[string]string{})
+	if err != nil {
+		return
+	}
+	resp, err := c.request(req)
+	if err != nil {
+		return
+	}
+	code = resp.StatusCode
+	return
+}
