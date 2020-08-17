@@ -63,14 +63,14 @@ func createLocalClient(args Args) *fs.Client {
 }
 
 func createRemoteClient(args Args) *webdav.Client {
-	c := webdav.NewClient()
-	c.BaseURI = args.secrets.BaseURI
-	c.BasePath = args.remotePath
-	c.AuthToken = args.secrets.Token
-	c.AuthTokenType = args.secrets.TokenType
-	c.AuthUser = args.secrets.User
-	c.AuthPass = args.secrets.Pass
-	return c
+	adapter := webdav.NewAdapter()
+	adapter.BaseURI = args.secrets.BaseURI
+	adapter.BasePath = args.remotePath
+	adapter.AuthToken = args.secrets.Token
+	adapter.AuthTokenType = args.secrets.TokenType
+	adapter.AuthUser = args.secrets.User
+	adapter.AuthPass = args.secrets.Pass
+	return webdav.NewClient(adapter)
 }
 
 func main() {
@@ -101,6 +101,19 @@ func main() {
 	for _, path := range delPaths {
 		log.Println("DEL", path)
 	}
+
+	for _, path := range addPaths {
+		node := localNodes[path]
+		if node.IsDir {
+			log.Println("TRY ADD DIR", path)
+			err := remote.Mkdir(path, true)
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
+	}
+
+	log.Println("\n\nDone.")
 }
 
 func logTree(paths []string, nodes map[string]model.Node) {

@@ -9,12 +9,18 @@ import (
 )
 
 type Client struct {
-	BaseDir string
+	model.Client
+
+	BaseDir  string
+	DirMode  os.FileMode
+	FileMode os.FileMode
 }
 
 func NewClient(baseDir string) *Client {
 	return &Client{
-		BaseDir: baseDir,
+		BaseDir:  baseDir,
+		DirMode:  755,
+		FileMode: 644,
 	}
 }
 
@@ -37,4 +43,12 @@ func (c *Client) ReadTree() (paths []string, nodes map[string]model.Node, err er
 		return nil
 	})
 	return
+}
+
+func (c *Client) Mkdir(path string, recursive bool) error {
+	realpath := filepath.Join(c.BaseDir, path)
+	if recursive {
+		return os.MkdirAll(realpath, c.DirMode)
+	}
+	return os.Mkdir(realpath, c.DirMode)
 }
