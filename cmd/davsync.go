@@ -78,49 +78,17 @@ func main() {
 	log.Printf("CLI ARGS:\n%#v\n\n", args)
 
 	local := createLocalClient(args)
-	localPaths, localNodes, err := local.ReadTree()
-	if err != nil {
-		log.Fatalln("ReadTree err", err)
-	}
-	logTree(localPaths, localNodes)
-
 	remote := createRemoteClient(args)
-	remotePaths, remoteNodes, err := remote.ReadTree()
+
+	sync := model.NewSync1Way(local, remote, model.Sync1WayOpt{
+		IgnoreExisting: true,
+		AllowDelete:    false,
+	})
+
+	err := sync.Sync()
 	if err != nil {
-		log.Fatalln("ReadTree err", err)
-	}
-	logTree(remotePaths, remoteNodes)
-
-	bothPaths, addPaths, delPaths := model.NodeComparePaths(localNodes, remoteNodes)
-	for _, path := range bothPaths {
-		log.Println("BOTH", path)
-	}
-	for _, path := range addPaths {
-		log.Println("ADD", path)
-	}
-	for _, path := range delPaths {
-		log.Println("DEL", path)
-	}
-
-	for _, path := range addPaths {
-		node := localNodes[path]
-		if node.IsDir {
-			log.Println("TRY ADD DIR", path)
-			err := remote.Mkdir(path, true)
-			if err != nil {
-				log.Fatal(err)
-			}
-		}
+		log.Fatalln("sync Sync()", err)
 	}
 
 	log.Println("\n\nDone.")
-}
-
-func logTree(paths []string, nodes map[string]model.Node) {
-	for _, path := range paths {
-		log.Println(path)
-	}
-	for path, node := range nodes {
-		log.Printf("\n%s\n%#v\n\n", path, node)
-	}
 }
