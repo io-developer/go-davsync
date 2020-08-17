@@ -7,6 +7,7 @@ import (
 	"log"
 
 	"github.com/io-developer/davsync/fs"
+	"github.com/io-developer/davsync/model"
 	"github.com/io-developer/davsync/webdav"
 	//	"github.com/studio-b12/gowebdav"
 )
@@ -77,22 +78,32 @@ func main() {
 	log.Printf("CLI ARGS:\n%#v\n\n", args)
 
 	local := createLocalClient(args)
-	paths, nodes, err := local.ReadTree()
+	localPaths, localNodes, err := local.ReadTree()
 	if err != nil {
 		log.Fatalln("ReadTree err", err)
 	}
-	for _, path := range paths {
-		log.Println(path)
-	}
-	for path, node := range nodes {
-		log.Printf("%s\n%#v\n\n", path, node)
-	}
+	logTree(localPaths, localNodes)
 
 	remote := createRemoteClient(args)
-	paths, nodes, err = remote.ReadTree()
+	remotePaths, remoteNodes, err := remote.ReadTree()
 	if err != nil {
 		log.Fatalln("ReadTree err", err)
 	}
+	logTree(remotePaths, remoteNodes)
+
+	bothPaths, addPaths, delPaths := model.NodeComparePaths(localNodes, remoteNodes)
+	for _, path := range bothPaths {
+		log.Println("BOTH", path)
+	}
+	for _, path := range addPaths {
+		log.Println("ADD", path)
+	}
+	for _, path := range delPaths {
+		log.Println("DEL", path)
+	}
+}
+
+func logTree(paths []string, nodes map[string]model.Node) {
 	for _, path := range paths {
 		log.Println(path)
 	}
