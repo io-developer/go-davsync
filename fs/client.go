@@ -39,6 +39,7 @@ func (c *Client) ReadTree() (paths []string, nodes map[string]model.Node, err er
 			Path:     path,
 			Name:     info.Name(),
 			IsDir:    info.IsDir(),
+			Size:     info.Size(),
 			FileInfo: &info,
 		}
 		return nil

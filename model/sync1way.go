@@ -113,7 +113,8 @@ func (s *Sync1Way) writeFiles() error {
 			if err != nil {
 				return err
 			}
-			err = s.dst.WriteFile(path, reader)
+			readProgress := NewReadProgress(reader, node.Size)
+			err = s.dst.WriteFile(path, readProgress)
 			if err != nil {
 				return err
 			}
