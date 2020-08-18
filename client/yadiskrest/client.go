@@ -1,6 +1,7 @@
 package yadiskrest
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -70,9 +71,6 @@ func (c *Client) MakeDir(path string, recursive bool) error {
 
 }
 
-func (c *Client) WriteFile(path string, content io.ReadCloser) error {
-
-}
 */
 
 func (c *Client) ReadFile(path string) (reader io.ReadCloser, err error) {
@@ -105,6 +103,38 @@ func (c *Client) ReadFile(path string) (reader io.ReadCloser, err error) {
 	return resp.Body, nil
 }
 
+func (c *Client) WriteFile(path string, content io.ReadCloser) error {
+	absPath := filepath.Join("/", c.BaseDir, path)
+	bytes, err := c.requestBytes("GET", "/resources/upload", url.Values{
+		"path":      []string{absPath},
+		"overwrite": []string{"true"},
+	})
+	if err != nil {
+		return err
+	}
+	info := &UploadInfo{}
+	err = json.Unmarshal(bytes, &info)
+	if err != nil {
+		return err
+	}
+	log.Printf("UploadInfo:\n%#v\n", info)
+	if info.Templated {
+		return fmt.Errorf("Unexpected templated=true.\n  Info: %#v", info)
+	}
+	req, err := http.NewRequest(info.Method, info.Href, content)
+	if err != nil {
+		return err
+	}
+	resp, err := c.sendRequest(req)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode == 201 || resp.StatusCode == 202 {
+		return nil
+	}
+	return fmt.Errorf("Upload failed with code %d, '%s'", resp.StatusCode, resp.Status)
+}
+
 func (c *Client) GetResources() (map[string]Resource, error) {
 	if c.resources != nil {
 		return c.resources, nil
@@ -115,7 +145,8 @@ func (c *Client) GetResources() (map[string]Resource, error) {
 	if err != nil {
 		return c.resources, err
 	}
-	r, err := ResourcesParse(bytes)
+	r := &Resources{}
+	err = json.Unmarshal(bytes, &r)
 	if err != nil {
 		return c.resources, err
 	}

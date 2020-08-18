@@ -1,7 +1,6 @@
 package yadiskrest
 
 import (
-	"encoding/json"
 	"time"
 )
 
@@ -21,7 +20,7 @@ type Resource struct {
 	File       string    `json:"file"`
 	Size       int64     `json:"size"`
 	Md5        string    `json:"md5"`
-	Sha256     string    `json:"sha256"`
+	Sha256     string    `json:"sha256,omitempty"`
 }
 
 func (r Resource) IsFile() bool {
@@ -36,10 +35,4 @@ type UploadInfo struct {
 	Href      string `json:"href"`
 	Method    string `json:"method"`
 	Templated bool   `json:"templated"`
-}
-
-func ResourcesParse(jsonBytes []byte) (Resources, error) {
-	r := Resources{}
-	err := json.Unmarshal(jsonBytes, &r)
-	return r, err
 }
