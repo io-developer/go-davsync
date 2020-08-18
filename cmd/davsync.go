@@ -3,11 +3,14 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"io"
 	"io/ioutil"
 	"log"
+	"os"
 
 	"github.com/io-developer/davsync/client/fs"
 	"github.com/io-developer/davsync/client/webdav"
+	"github.com/io-developer/davsync/client/yadiskrest"
 	"github.com/io-developer/davsync/model"
 )
 
@@ -75,6 +78,65 @@ func createRemoteClient(args Args) *webdav.Client {
 func main() {
 	args := parseArgs()
 	log.Printf("CLI ARGS:\n%#v\n\n", args)
+
+	yaopt := yadiskrest.ClientOpt{
+		ApiUri:    "https://cloud-api.yandex.net/v1/disk",
+		AuthToken: args.secrets.Token,
+	}
+	yaclient := yadiskrest.NewClient(yaopt)
+	yaclient.BaseDir = "/Загрузки"
+
+	yapaths, yanodes, yaerr := yaclient.ReadTree()
+	_, yaerr = yaclient.GetResources()
+	if yaerr != nil {
+		log.Fatal(yaerr)
+	}
+
+	for _, yanode := range yanodes {
+		log.Println("\nNODE")
+		log.Println("  Path", yanode.Path)
+		log.Println("  AbsPath", yanode.AbsPath)
+		log.Println("  Name", yanode.Name)
+		log.Println("  IsDir", yanode.IsDir)
+		log.Println("  Size", yanode.Size)
+		log.Printf("  UserData %#v\n", yanode.UserData)
+	}
+
+	for _, yapath := range yapaths {
+		log.Println(yapath)
+	}
+
+	log.Println("Trrying get file..")
+	yareader, yaerr := yaclient.ReadFile("/test-note3/F50SLAS209.zip")
+	if yaerr != nil {
+		log.Fatal(yaerr)
+	}
+	f, yaerr := os.OpenFile("/tmp/davsync.out", os.O_CREATE|os.O_WRONLY, 0644)
+	if yaerr != nil {
+		log.Fatal(yaerr)
+	}
+	_, yaerr = io.Copy(f, yareader)
+	if yaerr != nil {
+		log.Fatal(yaerr)
+	}
+	return
+	log.Println("Trrying upload file..")
+	f, yaerr = os.Open("/home/iodev/projects/local/davsync/.dav-test-input/code-stable-1585036655.tar.gz")
+	if yaerr != nil {
+		log.Fatal(yaerr)
+	}
+
+	finfo, yaerr := f.Stat()
+	if yaerr != nil {
+		log.Fatal(yaerr)
+	}
+	readProgress := model.NewReadProgress(f, finfo.Size())
+
+	yaerr = yaclient.WriteFile("/test-file-big.bin", readProgress)
+	if yaerr != nil {
+		log.Fatal(yaerr)
+	}
+	f.Close()
 
 	local := createLocalClient(args)
 	remote := createRemoteClient(args)
