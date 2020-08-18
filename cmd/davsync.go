@@ -6,10 +6,9 @@ import (
 	"io/ioutil"
 	"log"
 
-	"github.com/io-developer/davsync/fs"
+	"github.com/io-developer/davsync/client/fs"
+	"github.com/io-developer/davsync/client/webdav"
 	"github.com/io-developer/davsync/model"
-	"github.com/io-developer/davsync/webdav"
-	//	"github.com/studio-b12/gowebdav"
 )
 
 type Args struct {

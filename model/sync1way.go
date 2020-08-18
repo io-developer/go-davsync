@@ -1,6 +1,8 @@
 package model
 
-import "log"
+import (
+	"log"
+)
 
 type Sync1WayOpt struct {
 	IgnoreExisting bool
