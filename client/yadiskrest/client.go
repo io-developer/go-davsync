@@ -26,10 +26,11 @@ type Client struct {
 	RetryLimit int
 	RetryDelay time.Duration
 
-	opt         ClientOpt
-	httpClient  http.Client
-	baseHeaders map[string]string
-	resources   *Resources
+	opt           ClientOpt
+	httpClient    http.Client
+	baseHeaders   map[string]string
+	resources     map[string]Resource
+	resourcePaths []string
 }
 
 func NewClient(opt ClientOpt) *Client {
@@ -42,39 +43,30 @@ func NewClient(opt ClientOpt) *Client {
 		baseHeaders: map[string]string{
 			"Connection": "keep-alive",
 		},
-		resources: nil,
 	}
 }
 
 func (c *Client) ReadTree() (paths []string, nodes map[string]model.Node, err error) {
-	paths = []string{}
-	nodes = map[string]model.Node{}
-	r, err := c.GetResources()
+	items, err := c.GetResources()
 	if err != nil {
 		return
 	}
-	for _, item := range r.Items {
-		path, isSubset := c.relPathFrom(item.Path)
-		if isSubset {
-			nodes[path] = model.Node{
-				Path:     path,
-				AbsPath:  item.Path,
-				IsDir:    item.IsDir(),
-				Name:     item.Name,
-				Size:     item.Size,
-				UserData: item,
-			}
+	nodes = map[string]model.Node{}
+	for path, item := range items {
+		nodes[path] = model.Node{
+			Path:     path,
+			AbsPath:  item.Path,
+			IsDir:    item.IsDir(),
+			Name:     item.Name,
+			Size:     item.Size,
+			UserData: item,
 		}
 	}
-	return
+	return c.resourcePaths, nodes, nil
 }
 
 /*
 func (c *Client) MakeDir(path string, recursive bool) error {
-
-}
-
-func (c *Client) ReadFile(path string) (reader io.ReadCloser, err error) {
 
 }
 
@@ -83,21 +75,30 @@ func (c *Client) WriteFile(path string, content io.ReadCloser) error {
 }
 */
 
-func (c *Client) GetResources() (r Resources, err error) {
+func (c *Client) GetResources() (map[string]Resource, error) {
 	if c.resources != nil {
-		return *c.resources, nil
+		return c.resources, nil
 	}
 	bytes, err := c.requestBytes("GET", "/resources/files", url.Values{
 		"limit": []string{"999999"},
 	})
 	if err != nil {
-		return
+		return c.resources, err
 	}
-	r, err = ResourcesParse(bytes)
-	if err == nil {
-		c.resources = &r
+	r, err := ResourcesParse(bytes)
+	if err != nil {
+		return c.resources, err
 	}
-	return
+	c.resources = map[string]Resource{}
+	c.resourcePaths = []string{}
+	for _, item := range r.Items {
+		path, isSubset := c.relPathFrom(item.Path)
+		if isSubset {
+			c.resources[path] = item
+			c.resourcePaths = append(c.resourcePaths, path)
+		}
+	}
+	return c.resources, nil
 }
 
 func (c *Client) relPathFrom(absPath string) (path string, isSubset bool) {
