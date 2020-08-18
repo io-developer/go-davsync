@@ -75,6 +75,36 @@ func (c *Client) WriteFile(path string, content io.ReadCloser) error {
 }
 */
 
+func (c *Client) ReadFile(path string) (reader io.ReadCloser, err error) {
+	items, err := c.GetResources()
+	if err != nil {
+		return
+	}
+	item, exists := items[path]
+	if !exists {
+		err = fmt.Errorf("Resource not found '%s'", path)
+		return
+	}
+	if !item.IsFile() {
+		err = fmt.Errorf("Resource is not a file (%s) at '%s'", item.Type, path)
+		return
+	}
+	if item.File == "" {
+		err = fmt.Errorf("Resource download uri is empty at '%s'", path)
+		return
+	}
+	req, err := http.NewRequest("GET", item.File, nil)
+	if err != nil {
+		return
+	}
+	resp, err := c.sendRequest(req)
+	if err != nil {
+		return
+	}
+	log.Println("item md5", item.Md5)
+	return resp.Body, nil
+}
+
 func (c *Client) GetResources() (map[string]Resource, error) {
 	if c.resources != nil {
 		return c.resources, nil

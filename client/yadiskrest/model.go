@@ -24,6 +24,10 @@ type Resource struct {
 	Sha256     string    `json:"sha256"`
 }
 
+func (r Resource) IsFile() bool {
+	return r.Type == "file"
+}
+
 func (r Resource) IsDir() bool {
 	return r.Type == "dir"
 }
