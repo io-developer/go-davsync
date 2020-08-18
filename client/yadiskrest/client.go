@@ -54,14 +54,16 @@ func (c *Client) ReadTree() (paths []string, nodes map[string]model.Node, err er
 		return
 	}
 	for _, item := range r.Items {
-		path := c.relPathFrom(item.Path)
-		nodes[path] = model.Node{
-			Path:     path,
-			AbsPath:  item.Path,
-			IsDir:    item.IsDir(),
-			Name:     item.Name,
-			Size:     item.Size,
-			UserData: item,
+		path, isSubset := c.relPathFrom(item.Path)
+		if isSubset {
+			nodes[path] = model.Node{
+				Path:     path,
+				AbsPath:  item.Path,
+				IsDir:    item.IsDir(),
+				Name:     item.Name,
+				Size:     item.Size,
+				UserData: item,
+			}
 		}
 	}
 	return
@@ -98,10 +100,11 @@ func (c *Client) GetResources() (r Resources, err error) {
 	return
 }
 
-func (c *Client) relPathFrom(absPath string) string {
+func (c *Client) relPathFrom(absPath string) (path string, isSubset bool) {
 	prefix := "disk:" + strings.TrimRight(c.BaseDir, "/")
-	relpath := strings.TrimPrefix(absPath, prefix)
-	return filepath.Join("/", relpath)
+	path = filepath.Join("/", strings.TrimPrefix(absPath, prefix))
+	isSubset = strings.HasPrefix(absPath, prefix)
+	return
 }
 
 // http impl
