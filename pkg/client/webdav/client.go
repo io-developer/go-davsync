@@ -4,24 +4,41 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"path/filepath"
 	"regexp"
 	"strings"
 
 	"github.com/io-developer/go-davsync/pkg/client"
 )
 
+type ClientOpt struct {
+	DavUri        string
+	AuthToken     string
+	AuthTokenType string
+	AuthUser      string
+	AuthPass      string
+}
+
 type Client struct {
 	client.Client
 
+	BaseDir string
+
+	opt           ClientOpt
 	adapter       *Adapter
 	propfinds     map[string]Propfind
 	propfindPaths []string
 }
 
-func NewClient(adapter *Adapter) *Client {
+func NewClient(opt ClientOpt) *Client {
 	return &Client{
-		adapter: adapter,
+		opt:     opt,
+		adapter: NewAdapter(AdapterOpt{opt}),
 	}
+}
+
+func (c *Client) buildDavPath(path string) string {
+	return filepath.Join(c.BaseDir, path)
 }
 
 func (c *Client) ReadTree() (paths []string, resources map[string]client.Resource, err error) {
@@ -60,13 +77,13 @@ func (c *Client) ReadPropfinds(
 	outPaths *[]string,
 	outPropfinds map[string]Propfind,
 ) (err error) {
-	some, err := c.adapter.Propfind(path, "infinity")
+	some, err := c.adapter.Propfind(c.buildDavPath(path), "infinity")
 	if err != nil {
 		return
 	}
 	for _, item := range some.Propfinds {
 		absPath := item.GetHrefUnicode()
-		relPath := strings.TrimPrefix(absPath, c.adapter.BasePath)
+		relPath := strings.TrimPrefix(absPath, c.BaseDir)
 		if _, exists := outPropfinds[relPath]; exists {
 			continue
 		}
@@ -83,7 +100,7 @@ func (c *Client) MakeDir(path string, recursive bool) error {
 	if recursive {
 		return c.makeDirRecursive(path)
 	}
-	_, err := c.adapter.Mkcol(path)
+	_, err := c.adapter.Mkcol(c.buildDavPath(path))
 	return err
 }
 
@@ -105,7 +122,7 @@ func (c *Client) makeDirRecursive(path string) error {
 	dir := ""
 	for _, part := range parts {
 		dir += "/" + part
-		code, err := c.adapter.Mkcol(dir)
+		code, err := c.adapter.Mkcol(c.buildDavPath(dir))
 		if err != nil && code != 409 {
 			return err
 		}
@@ -114,7 +131,7 @@ func (c *Client) makeDirRecursive(path string) error {
 }
 
 func (c *Client) ReadFile(path string) (reader io.ReadCloser, err error) {
-	reader, code, err := c.adapter.GetFile(path)
+	reader, code, err := c.adapter.GetFile(c.buildDavPath(path))
 	if err != nil {
 		return
 	}
@@ -126,7 +143,7 @@ func (c *Client) ReadFile(path string) (reader io.ReadCloser, err error) {
 }
 
 func (c *Client) WriteFile(path string, content io.ReadCloser) error {
-	code, err := c.adapter.PutFile(path, content)
+	code, err := c.adapter.PutFile(c.buildDavPath(path), content)
 	if err != nil {
 		return err
 	}

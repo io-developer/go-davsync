@@ -7,26 +7,26 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"path/filepath"
 	"strings"
 	"time"
 )
 
-type Adapter struct {
-	BaseURI       string
-	BasePath      string
-	AuthToken     string
-	AuthTokenType string
-	AuthUser      string
-	AuthPass      string
-	RetryLimit    int
-	RetryDelay    time.Duration
-	httpClient    http.Client
-	baseHeaders   map[string]string
+type AdapterOpt struct {
+	ClientOpt
 }
 
-func NewAdapter() *Adapter {
+type Adapter struct {
+	RetryLimit int
+	RetryDelay time.Duration
+
+	opt         AdapterOpt
+	httpClient  http.Client
+	baseHeaders map[string]string
+}
+
+func NewAdapter(opt AdapterOpt) *Adapter {
 	return &Adapter{
+		opt:        opt,
 		httpClient: http.Client{},
 		baseHeaders: map[string]string{
 			"Content-Type":   "application/xml;charset=UTF-8",
@@ -39,8 +39,21 @@ func NewAdapter() *Adapter {
 	}
 }
 
-func (c *Adapter) createRequest(method, path string, body io.Reader, headers map[string]string) (*http.Request, error) {
+func (c *Adapter) buildURI(path string) string {
+	return fmt.Sprintf(
+		"%s/%s",
+		strings.TrimRight(c.opt.DavUri, "/"),
+		strings.TrimLeft(path, "/"),
+	)
+}
+func (c *Adapter) createRequest(
+	method string,
+	path string,
+	body io.Reader,
+	headers map[string]string,
+) (*http.Request, error) {
 	uri := c.buildURI(path)
+
 	log.Printf("createRequest\n  path: %s\n  uri: %s\n  method: %s\n\n", path, uri, method)
 
 	req, err := http.NewRequest(method, uri, body)
@@ -56,20 +69,16 @@ func (c *Adapter) createRequest(method, path string, body io.Reader, headers map
 	return c.auth(req), err
 }
 
-func (c *Adapter) buildURI(path string) string {
-	uriPath := filepath.Join(c.BasePath, path)
-	return fmt.Sprintf("%s/%s", strings.TrimRight(c.BaseURI, "/"), strings.TrimLeft(uriPath, "/"))
-}
-
 func (c *Adapter) auth(req *http.Request) *http.Request {
-	if c.AuthToken != "" {
-		authPrefix := c.AuthTokenType
+	if c.opt.AuthToken != "" {
+		authPrefix := c.opt.AuthTokenType
 		if authPrefix == "" {
 			authPrefix = "OAuth"
 		}
-		req.Header.Add("Authorization", fmt.Sprintf("%s %s", authPrefix, c.AuthToken))
+		val := fmt.Sprintf("%s %s", authPrefix, c.opt.AuthToken)
+		req.Header.Add("Authorization", val)
 	} else {
-		req.SetBasicAuth(c.AuthUser, c.AuthPass)
+		req.SetBasicAuth(c.opt.AuthUser, c.opt.AuthPass)
 	}
 	return req
 }
