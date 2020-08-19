@@ -42,9 +42,9 @@ func NewAdapter() *Adapter {
 	}
 }
 
-func (c *Adapter) ReadTree() (paths []string, nodes map[string]client.Node, err error) {
+func (c *Adapter) ReadTree() (paths []string, nodes map[string]client.Resource, err error) {
 	paths = []string{}
-	nodes = map[string]client.Node{}
+	nodes = map[string]client.Resource{}
 	err = c.readTree("/", &paths, nodes)
 	return
 }
@@ -52,7 +52,7 @@ func (c *Adapter) ReadTree() (paths []string, nodes map[string]client.Node, err 
 func (c *Adapter) readTree(
 	path string,
 	outPaths *[]string,
-	outNodes map[string]client.Node,
+	outNodes map[string]client.Resource,
 ) (err error) {
 	some, err := c.PropfindSome(path, "infinity")
 	if err != nil {
@@ -65,7 +65,7 @@ func (c *Adapter) readTree(
 			continue
 		}
 		*outPaths = append(*outPaths, relPath)
-		outNodes[relPath] = client.Node{
+		outNodes[relPath] = client.Resource{
 			AbsPath:  absPath,
 			Path:     relPath,
 			Name:     item.DisplayName,

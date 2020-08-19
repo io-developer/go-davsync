@@ -1,10 +1,8 @@
 package client
 
-import (
-	"os"
-)
+import "os"
 
-type Node struct {
+type Resource struct {
 	Name     string
 	Path     string
 	AbsPath  string
@@ -14,6 +12,6 @@ type Node struct {
 	UserData interface{}
 }
 
-func (n Node) IsLocal() bool {
+func (n Resource) IsLocal() bool {
 	return n.FileInfo != nil
 }

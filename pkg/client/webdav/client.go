@@ -19,7 +19,7 @@ func NewClient(adapter *Adapter) *Client {
 	}
 }
 
-func (c *Client) ReadTree() (paths []string, nodes map[string]client.Node, err error) {
+func (c *Client) ReadTree() (paths []string, nodes map[string]client.Resource, err error) {
 	return c.adapter.ReadTree()
 }
 

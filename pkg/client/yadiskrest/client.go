@@ -49,14 +49,14 @@ func NewClient(opt ClientOpt) *Client {
 	}
 }
 
-func (c *Client) ReadTree() (paths []string, nodes map[string]client.Node, err error) {
+func (c *Client) ReadTree() (paths []string, nodes map[string]client.Resource, err error) {
 	items, err := c.GetResources()
 	if err != nil {
 		return
 	}
-	nodes = map[string]client.Node{}
+	nodes = map[string]client.Resource{}
 	for path, item := range items {
-		nodes[path] = client.Node{
+		nodes[path] = client.Resource{
 			Path:     path,
 			AbsPath:  item.Path,
 			IsDir:    item.IsDir(),

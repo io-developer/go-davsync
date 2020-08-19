@@ -25,16 +25,16 @@ func NewClient(baseDir string) *Client {
 	}
 }
 
-func (c *Client) ReadTree() (paths []string, nodes map[string]client.Node, err error) {
+func (c *Client) ReadTree() (paths []string, nodes map[string]client.Resource, err error) {
 	paths = []string{}
-	nodes = map[string]client.Node{}
+	nodes = map[string]client.Resource{}
 	err = filepath.Walk(c.BaseDir, func(absPath string, info os.FileInfo, err error) error {
 		if info.IsDir() && !strings.HasSuffix(absPath, "/") {
 			absPath += "/"
 		}
 		path := strings.TrimPrefix(absPath, strings.TrimRight(c.BaseDir, "/"))
 		paths = append(paths, path)
-		nodes[path] = client.Node{
+		nodes[path] = client.Resource{
 			AbsPath:  absPath,
 			Path:     path,
 			Name:     info.Name(),

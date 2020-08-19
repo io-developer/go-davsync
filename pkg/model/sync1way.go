@@ -18,10 +18,10 @@ type Sync1Way struct {
 
 	// sync-time data
 	srcPaths []string
-	srcNodes map[string]client.Node
+	srcNodes map[string]client.Resource
 
 	dstPaths []string
-	dstNodes map[string]client.Node
+	dstNodes map[string]client.Resource
 
 	bothPaths []string
 	addPaths  []string
@@ -71,7 +71,7 @@ func (s *Sync1Way) readTrees() error {
 	return err
 }
 
-func logTree(paths []string, nodes map[string]client.Node) {
+func logTree(paths []string, nodes map[string]client.Resource) {
 	for _, path := range paths {
 		log.Println(path)
 	}
@@ -127,7 +127,7 @@ func (s *Sync1Way) writeFiles() error {
 	return nil
 }
 
-func compareNodes(from, to map[string]client.Node) (both, add, del []string) {
+func compareNodes(from, to map[string]client.Resource) (both, add, del []string) {
 	both = []string{}
 	add = []string{}
 	del = []string{}
