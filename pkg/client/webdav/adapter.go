@@ -98,7 +98,7 @@ func (c *Adapter) request(req *http.Request) (resp *http.Response, err error) {
 	return
 }
 
-func (c *Adapter) Propfind(path string, depth string) (result PropfindSome, err error) {
+func (c *Adapter) Propfind(path string, depth string) (result PropfindSome, code int, err error) {
 	reqBody := strings.NewReader(
 		"<d:propfind xmlns:d='DAV:'>" +
 			"<d:allprop/>" +
@@ -116,8 +116,9 @@ func (c *Adapter) Propfind(path string, depth string) (result PropfindSome, err 
 	if err != nil {
 		return
 	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		err = fmt.Errorf("Unexpected PROPFIND code %d '%s'", resp.StatusCode, resp.Status)
+	code = resp.StatusCode
+	if code < 200 || code >= 300 {
+		err = fmt.Errorf("Unexpected PROPFIND code %d '%s'", code, resp.Status)
 		return
 	}
 	bytes, err := ioutil.ReadAll(resp.Body)

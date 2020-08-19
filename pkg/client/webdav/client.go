@@ -53,7 +53,7 @@ func (c *Client) ReadTree() (paths []string, resources map[string]client.Resourc
 	for path, propfind := range c.propfinds {
 		resources[path] = client.Resource{
 			Path:     path,
-			AbsPath:  propfind.GetHrefUnicode(),
+			AbsPath:  propfind.GetNormalizedAbsPath(),
 			Name:     propfind.DisplayName,
 			IsDir:    propfind.IsCollection(),
 			Size:     propfind.ContentLength,
@@ -79,11 +79,16 @@ func (c *Client) ReadPropfinds(
 	outPaths *[]string,
 	outPropfinds map[string]Propfind,
 ) (err error) {
-	some, err := c.adapter.Propfind(c.buildDavPath(path), "infinity")
+	some, code, err := c.adapter.Propfind(c.buildDavPath(path), "infinity")
+	items := some.Propfinds
+	if code == 404 {
+		err = nil
+		items = []Propfind{}
+	}
 	if err != nil {
 		return
 	}
-	for _, item := range some.Propfinds {
+	for _, item := range items {
 		absPath := item.GetNormalizedAbsPath()
 		relPath := strings.TrimPrefix(absPath, c.BaseDir)
 		if _, exists := outPropfinds[relPath]; exists {
