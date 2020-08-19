@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -42,6 +43,7 @@ func NewClient(opt ClientOpt) *Client {
 		opt:        opt,
 		httpClient: http.Client{},
 		baseHeaders: map[string]string{
+			"Accept":     "*/*",
 			"Connection": "keep-alive",
 		},
 	}
@@ -66,12 +68,58 @@ func (c *Client) ReadTree() (paths []string, nodes map[string]model.Node, err er
 	return c.resourcePaths, nodes, nil
 }
 
-/*
 func (c *Client) MakeDir(path string, recursive bool) error {
-
+	if recursive {
+		return c.makeDirRecursive(path)
+	}
+	_, err := c.makeDir(path)
+	return err
 }
 
-*/
+func (c *Client) MakeDirFor(filePath string) error {
+	re, err := regexp.Compile("(^|/+)[^/]+$")
+	if err != nil {
+		return err
+	}
+	dir := re.ReplaceAllString(filePath, "")
+	return c.makeDirRecursive(dir)
+}
+
+func (c *Client) makeDirRecursive(path string) error {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	total := len(parts)
+	if total < 1 {
+		return nil
+	}
+	dir := ""
+	for _, part := range parts {
+		dir += "/" + part
+		code, err := c.makeDir(dir)
+		if err != nil && code != 409 {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *Client) makeDir(path string) (code int, err error) {
+	absPath := filepath.Join("/", c.BaseDir, path)
+	req, err := c.createRequest("PUT", "/resources", url.Values{
+		"path": []string{absPath},
+	}, nil)
+	if err != nil {
+		return
+	}
+	resp, err := c.sendRequest(req)
+	if err != nil {
+		return
+	}
+	code = resp.StatusCode
+	if code != 201 {
+		err = fmt.Errorf("Expected mkdir code 201, got %d '%s'", code, resp.Status)
+	}
+	return
+}
 
 func (c *Client) ReadFile(path string) (reader io.ReadCloser, err error) {
 	items, err := c.GetResources()
@@ -105,10 +153,21 @@ func (c *Client) ReadFile(path string) (reader io.ReadCloser, err error) {
 
 func (c *Client) WriteFile(path string, content io.ReadCloser) error {
 	absPath := filepath.Join("/", c.BaseDir, path)
-	bytes, err := c.requestBytes("GET", "/resources/upload", url.Values{
+	resp, err := c.request("GET", "/resources/upload", url.Values{
 		"path":      []string{absPath},
 		"overwrite": []string{"true"},
 	})
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf(
+			"Unexpected response code %d '%s'",
+			resp.StatusCode,
+			resp.Status,
+		)
+	}
+	bytes, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return err
 	}
@@ -125,7 +184,7 @@ func (c *Client) WriteFile(path string, content io.ReadCloser) error {
 	if err != nil {
 		return err
 	}
-	resp, err := c.sendRequest(req)
+	resp, err = c.sendRequest(req)
 	if err != nil {
 		return err
 	}
@@ -176,6 +235,7 @@ func (c *Client) requestBytes(method, path string, query url.Values) ([]byte, er
 	if err != nil {
 		return nil, err
 	}
+	log.Println("requestBytes code", resp.StatusCode, resp.Status)
 	return ioutil.ReadAll(resp.Body)
 }
 

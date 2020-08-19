@@ -3,10 +3,8 @@ package main
 import (
 	"encoding/json"
 	"flag"
-	"io"
 	"io/ioutil"
 	"log"
-	"os"
 
 	"github.com/io-developer/davsync/client/fs"
 	"github.com/io-developer/davsync/client/webdav"
@@ -64,7 +62,11 @@ func createLocalClient(args Args) *fs.Client {
 	return fs.NewClient(args.localPath)
 }
 
-func createRemoteClient(args Args) *webdav.Client {
+func createRemoteClient(args Args) model.Client {
+	return createRemoteDavClient(args)
+}
+
+func createRemoteDavClient(args Args) *webdav.Client {
 	adapter := webdav.NewAdapter()
 	adapter.BaseURI = args.secrets.BaseURI
 	adapter.BasePath = args.remotePath
@@ -75,69 +77,101 @@ func createRemoteClient(args Args) *webdav.Client {
 	return webdav.NewClient(adapter)
 }
 
-func main() {
-	args := parseArgs()
-	log.Printf("CLI ARGS:\n%#v\n\n", args)
-
-	yaopt := yadiskrest.ClientOpt{
+func createRemoteYaClient(args Args) *yadiskrest.Client {
+	opt := yadiskrest.ClientOpt{
 		ApiUri:    "https://cloud-api.yandex.net/v1/disk",
 		AuthToken: args.secrets.Token,
 	}
-	yaclient := yadiskrest.NewClient(yaopt)
-	yaclient.BaseDir = "/Загрузки"
+	client := yadiskrest.NewClient(opt)
+	client.BaseDir = args.remotePath
+	return client
+}
 
-	yapaths, yanodes, yaerr := yaclient.ReadTree()
-	_, yaerr = yaclient.GetResources()
-	if yaerr != nil {
-		log.Fatal(yaerr)
-	}
+func main() {
+	args := parseArgs()
+	log.Printf("CLI ARGS:\n%#v\n\n", args)
+	/*
+		yaopt := yadiskrest.ClientOpt{
+			ApiUri:    "https://cloud-api.yandex.net/v1/disk",
+			AuthToken: args.secrets.Token,
+		}
+		yaclient := yadiskrest.NewClient(yaopt)
+		yaclient.BaseDir = "/Загрузки"
 
-	for _, yanode := range yanodes {
-		log.Println("\nNODE")
-		log.Println("  Path", yanode.Path)
-		log.Println("  AbsPath", yanode.AbsPath)
-		log.Println("  Name", yanode.Name)
-		log.Println("  IsDir", yanode.IsDir)
-		log.Println("  Size", yanode.Size)
-		log.Printf("  UserData %#v\n", yanode.UserData)
-	}
+		yapaths, yanodes, yaerr := yaclient.ReadTree()
+		_, yaerr = yaclient.GetResources()
+		if yaerr != nil {
+			log.Fatal(yaerr)
+		}
 
-	for _, yapath := range yapaths {
-		log.Println(yapath)
-	}
+		for _, yanode := range yanodes {
+			log.Println("\nNODE")
+			log.Println("  Path", yanode.Path)
+			log.Println("  AbsPath", yanode.AbsPath)
+			log.Println("  Name", yanode.Name)
+			log.Println("  IsDir", yanode.IsDir)
+			log.Println("  Size", yanode.Size)
+			log.Printf("  UserData %#v\n", yanode.UserData)
+		}
 
-	log.Println("Trrying get file..")
-	yareader, yaerr := yaclient.ReadFile("/test-note3/F50SLAS209.zip")
-	if yaerr != nil {
-		log.Fatal(yaerr)
-	}
-	f, yaerr := os.OpenFile("/tmp/davsync.out", os.O_CREATE|os.O_WRONLY, 0644)
-	if yaerr != nil {
-		log.Fatal(yaerr)
-	}
-	_, yaerr = io.Copy(f, yareader)
-	if yaerr != nil {
-		log.Fatal(yaerr)
-	}
-	return
-	log.Println("Trrying upload file..")
-	f, yaerr = os.Open("/home/iodev/projects/local/davsync/.dav-test-input/code-stable-1585036655.tar.gz")
-	if yaerr != nil {
-		log.Fatal(yaerr)
-	}
+		for _, yapath := range yapaths {
+			log.Println(yapath)
+		}
 
-	finfo, yaerr := f.Stat()
-	if yaerr != nil {
-		log.Fatal(yaerr)
-	}
-	readProgress := model.NewReadProgress(f, finfo.Size())
+		log.Println("Trrying get file..")
+		yareader, yaerr := yaclient.ReadFile("/test-note3/F50SLAS209.zip")
+		if yaerr != nil {
+			log.Fatal(yaerr)
+		}
+		f, yaerr := os.OpenFile("/tmp/davsync.out", os.O_CREATE|os.O_WRONLY, 0644)
+		if yaerr != nil {
+			log.Fatal(yaerr)
+		}
+		_, yaerr = io.Copy(f, yareader)
+		if yaerr != nil {
+			log.Fatal(yaerr)
+		}
 
-	yaerr = yaclient.WriteFile("/test-file-big.bin", readProgress)
-	if yaerr != nil {
-		log.Fatal(yaerr)
-	}
-	f.Close()
+		log.Println("Trrying upload file..")
 
+		re, yaerr := regexp.Compile("(^|/+)[^/]+$")
+		if yaerr != nil {
+			log.Fatal(yaerr)
+		}
+		log.Println("Replaced", re.ReplaceAllString("/foo/bar/baz/test-file-big.bin", ""))
+		log.Println("Replaced", re.ReplaceAllString("/test-file-big.bin", ""))
+		log.Println("Replaced", re.ReplaceAllString("test-file-big.bin", ""))
+		log.Println("Replaced", re.ReplaceAllString("/1/test-file-big.bin", ""))
+		log.Println("Replaced", re.ReplaceAllString("1/test-file-big.bin", ""))
+
+		//f, yaerr = os.Open("/home/iodev/projects/local/davsync/.dav-test-input/code-stable-1585036655.tar.gz")
+		f, yaerr = os.Open("/tmp/davsync.out")
+		if yaerr != nil {
+			log.Fatal(yaerr)
+		}
+
+		finfo, yaerr := f.Stat()
+		if yaerr != nil {
+			log.Fatal(yaerr)
+		}
+		readProgress := model.NewReadProgress(f, finfo.Size())
+
+		log.Println("  mkdir..")
+		yaerr = yaclient.MakeDirFor("/foo/bar/baz/test-file-big.bin")
+		if yaerr != nil {
+			log.Fatal(yaerr)
+		}
+		log.Println("  uploading..")
+		yaerr = yaclient.WriteFile("/foo/bar/baz/test-file-big.bin", readProgress)
+		if yaerr != nil {
+			log.Fatal(yaerr)
+		}
+		f.Close()
+
+		log.Println("Done.")
+
+		return
+	*/
 	local := createLocalClient(args)
 	remote := createRemoteClient(args)
 
