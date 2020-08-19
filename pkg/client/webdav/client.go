@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/io-developer/davsync/model"
+	"github.com/io-developer/go-davsync/pkg/client"
 )
 
 type Client struct {
-	model.Client
+	client.Client
 
 	adapter *Adapter
 }
@@ -19,7 +19,7 @@ func NewClient(adapter *Adapter) *Client {
 	}
 }
 
-func (c *Client) ReadTree() (paths []string, nodes map[string]model.Node, err error) {
+func (c *Client) ReadTree() (paths []string, nodes map[string]client.Node, err error) {
 	return c.adapter.ReadTree()
 }
 

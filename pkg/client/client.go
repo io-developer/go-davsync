@@ -1,8 +1,6 @@
-package model
+package client
 
-import (
-	"io"
-)
+import "io"
 
 type Client interface {
 	ReadTree() (paths []string, nodes map[string]Node, err error)

@@ -2,6 +2,8 @@ package model
 
 import (
 	"log"
+
+	"github.com/io-developer/go-davsync/pkg/client"
 )
 
 type Sync1WayOpt struct {
@@ -10,23 +12,23 @@ type Sync1WayOpt struct {
 }
 
 type Sync1Way struct {
-	src Client
-	dst Client
+	src client.Client
+	dst client.Client
 	opt Sync1WayOpt
 
 	// sync-time data
 	srcPaths []string
-	srcNodes map[string]Node
+	srcNodes map[string]client.Node
 
 	dstPaths []string
-	dstNodes map[string]Node
+	dstNodes map[string]client.Node
 
 	bothPaths []string
 	addPaths  []string
 	delPaths  []string
 }
 
-func NewSync1Way(src, dst Client, opt Sync1WayOpt) *Sync1Way {
+func NewSync1Way(src, dst client.Client, opt Sync1WayOpt) *Sync1Way {
 	return &Sync1Way{
 		src: src,
 		dst: dst,
@@ -69,7 +71,7 @@ func (s *Sync1Way) readTrees() error {
 	return err
 }
 
-func logTree(paths []string, nodes map[string]Node) {
+func logTree(paths []string, nodes map[string]client.Node) {
 	for _, path := range paths {
 		log.Println(path)
 	}
@@ -79,7 +81,7 @@ func logTree(paths []string, nodes map[string]Node) {
 }
 
 func (s *Sync1Way) diff() {
-	s.bothPaths, s.addPaths, s.delPaths = NodeComparePaths(s.srcNodes, s.dstNodes)
+	s.bothPaths, s.addPaths, s.delPaths = compareNodes(s.srcNodes, s.dstNodes)
 	for _, path := range s.bothPaths {
 		log.Println("BOTH", path)
 	}
@@ -123,4 +125,23 @@ func (s *Sync1Way) writeFiles() error {
 		}
 	}
 	return nil
+}
+
+func compareNodes(from, to map[string]client.Node) (both, add, del []string) {
+	both = []string{}
+	add = []string{}
+	del = []string{}
+	for path := range from {
+		if _, exists := to[path]; exists {
+			both = append(both, path)
+		} else {
+			add = append(add, path)
+		}
+	}
+	for path := range to {
+		if _, exists := from[path]; !exists {
+			del = append(del, path)
+		}
+	}
+	return
 }

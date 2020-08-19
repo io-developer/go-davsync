@@ -6,11 +6,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/io-developer/davsync/model"
+	"github.com/io-developer/go-davsync/pkg/client"
 )
 
 type Client struct {
-	model.Client
+	client.Client
 
 	BaseDir  string
 	DirMode  os.FileMode
@@ -25,16 +25,16 @@ func NewClient(baseDir string) *Client {
 	}
 }
 
-func (c *Client) ReadTree() (paths []string, nodes map[string]model.Node, err error) {
+func (c *Client) ReadTree() (paths []string, nodes map[string]client.Node, err error) {
 	paths = []string{}
-	nodes = map[string]model.Node{}
+	nodes = map[string]client.Node{}
 	err = filepath.Walk(c.BaseDir, func(absPath string, info os.FileInfo, err error) error {
 		if info.IsDir() && !strings.HasSuffix(absPath, "/") {
 			absPath += "/"
 		}
 		path := strings.TrimPrefix(absPath, strings.TrimRight(c.BaseDir, "/"))
 		paths = append(paths, path)
-		nodes[path] = model.Node{
+		nodes[path] = client.Node{
 			AbsPath:  absPath,
 			Path:     path,
 			Name:     info.Name(),

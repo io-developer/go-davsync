@@ -6,10 +6,11 @@ import (
 	"io/ioutil"
 	"log"
 
-	"github.com/io-developer/davsync/client/fs"
-	"github.com/io-developer/davsync/client/webdav"
-	"github.com/io-developer/davsync/client/yadiskrest"
-	"github.com/io-developer/davsync/model"
+	"github.com/io-developer/go-davsync/pkg/client"
+	"github.com/io-developer/go-davsync/pkg/client/fs"
+	"github.com/io-developer/go-davsync/pkg/client/webdav"
+	"github.com/io-developer/go-davsync/pkg/client/yadiskrest"
+	"github.com/io-developer/go-davsync/pkg/model"
 )
 
 type Args struct {
@@ -62,7 +63,7 @@ func createLocalClient(args Args) *fs.Client {
 	return fs.NewClient(args.localPath)
 }
 
-func createRemoteClient(args Args) model.Client {
+func createRemoteClient(args Args) client.Client {
 	return createRemoteDavClient(args)
 }
 

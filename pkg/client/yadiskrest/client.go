@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/io-developer/davsync/model"
+	"github.com/io-developer/go-davsync/pkg/client"
 )
 
 type ClientOpt struct {
@@ -49,14 +49,14 @@ func NewClient(opt ClientOpt) *Client {
 	}
 }
 
-func (c *Client) ReadTree() (paths []string, nodes map[string]model.Node, err error) {
+func (c *Client) ReadTree() (paths []string, nodes map[string]client.Node, err error) {
 	items, err := c.GetResources()
 	if err != nil {
 		return
 	}
-	nodes = map[string]model.Node{}
+	nodes = map[string]client.Node{}
 	for path, item := range items {
-		nodes[path] = model.Node{
+		nodes[path] = client.Node{
 			Path:     path,
 			AbsPath:  item.Path,
 			IsDir:    item.IsDir(),

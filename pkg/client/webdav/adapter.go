@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/io-developer/davsync/model"
+	"github.com/io-developer/go-davsync/pkg/client"
 )
 
 type Adapter struct {
@@ -42,9 +42,9 @@ func NewAdapter() *Adapter {
 	}
 }
 
-func (c *Adapter) ReadTree() (paths []string, nodes map[string]model.Node, err error) {
+func (c *Adapter) ReadTree() (paths []string, nodes map[string]client.Node, err error) {
 	paths = []string{}
-	nodes = map[string]model.Node{}
+	nodes = map[string]client.Node{}
 	err = c.readTree("/", &paths, nodes)
 	return
 }
@@ -52,7 +52,7 @@ func (c *Adapter) ReadTree() (paths []string, nodes map[string]model.Node, err e
 func (c *Adapter) readTree(
 	path string,
 	outPaths *[]string,
-	outNodes map[string]model.Node,
+	outNodes map[string]client.Node,
 ) (err error) {
 	some, err := c.PropfindSome(path, "infinity")
 	if err != nil {
@@ -65,7 +65,7 @@ func (c *Adapter) readTree(
 			continue
 		}
 		*outPaths = append(*outPaths, relPath)
-		outNodes[relPath] = model.Node{
+		outNodes[relPath] = client.Node{
 			AbsPath:  absPath,
 			Path:     relPath,
 			Name:     item.DisplayName,
