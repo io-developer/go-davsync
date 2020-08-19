@@ -28,12 +28,14 @@ type Client struct {
 	adapter       *Adapter
 	propfinds     map[string]Propfind
 	propfindPaths []string
+	createdDirs   map[string]string
 }
 
 func NewClient(opt ClientOpt) *Client {
 	return &Client{
-		opt:     opt,
-		adapter: NewAdapter(AdapterOpt{opt}),
+		opt:         opt,
+		adapter:     NewAdapter(AdapterOpt{opt}),
+		createdDirs: make(map[string]string),
 	}
 }
 
@@ -82,7 +84,7 @@ func (c *Client) ReadPropfinds(
 		return
 	}
 	for _, item := range some.Propfinds {
-		absPath := item.GetHrefUnicode()
+		absPath := item.GetNormalizedAbsPath()
 		relPath := strings.TrimPrefix(absPath, c.BaseDir)
 		if _, exists := outPropfinds[relPath]; exists {
 			continue
@@ -100,7 +102,7 @@ func (c *Client) MakeDir(path string, recursive bool) error {
 	if recursive {
 		return c.makeDirRecursive(path)
 	}
-	_, err := c.adapter.Mkcol(c.buildDavPath(path))
+	_, err := c.makeDir(path)
 	return err
 }
 
@@ -122,12 +124,27 @@ func (c *Client) makeDirRecursive(path string) error {
 	dir := ""
 	for _, part := range parts {
 		dir += "/" + part
-		code, err := c.adapter.Mkcol(c.buildDavPath(dir))
+		code, err := c.makeDir(dir)
 		if err != nil && code != 409 {
 			return err
 		}
 	}
 	return nil
+}
+
+func (c *Client) makeDir(path string) (code int, err error) {
+	path = client.NormalizePath(path, true)
+	if _, exists := c.createdDirs[path]; exists {
+		return 200, nil
+	}
+	if propfind, exists := c.propfinds[path]; exists && propfind.IsCollection() {
+		return 200, nil
+	}
+	code, err = c.adapter.Mkcol(c.buildDavPath(path))
+	if err == nil && code >= 200 && code < 300 {
+		c.createdDirs[path] = path
+	}
+	return
 }
 
 func (c *Client) ReadFile(path string) (reader io.ReadCloser, err error) {

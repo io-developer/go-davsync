@@ -212,7 +212,8 @@ func (c *Client) GetResources() (map[string]Resource, error) {
 	c.resources = map[string]Resource{}
 	c.resourcePaths = []string{}
 	for _, item := range r.Items {
-		path, isSubset := c.relPathFrom(item.Path)
+		absPath := item.GetNormalizedAbsPath()
+		path, isSubset := c.relPathFrom(absPath)
 		if isSubset {
 			c.resources[path] = item
 			c.resourcePaths = append(c.resourcePaths, path)

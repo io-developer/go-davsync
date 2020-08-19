@@ -2,6 +2,8 @@ package yadiskrest
 
 import (
 	"time"
+
+	"github.com/io-developer/go-davsync/pkg/client"
 )
 
 type Resources struct {
@@ -29,6 +31,10 @@ func (r Resource) IsFile() bool {
 
 func (r Resource) IsDir() bool {
 	return r.Type == "dir"
+}
+
+func (r Resource) GetNormalizedAbsPath() string {
+	return client.NormalizePath(r.Path, r.IsDir())
 }
 
 type UploadInfo struct {

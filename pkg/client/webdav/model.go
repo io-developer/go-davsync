@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/url"
 	"time"
+
+	"github.com/io-developer/go-davsync/pkg/client"
 )
 
 type PropfindSome struct {
@@ -34,6 +36,10 @@ func (p *Propfind) GetHrefUnicode() string {
 		return decoded
 	}
 	return p.Href
+}
+
+func (p *Propfind) GetNormalizedAbsPath() string {
+	return client.NormalizePath(p.GetHrefUnicode(), p.IsCollection())
 }
 
 type DavTime struct {
