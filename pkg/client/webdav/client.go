@@ -223,3 +223,14 @@ func (c *Client) WriteFile(path string, content io.ReadCloser) error {
 	}
 	return fmt.Errorf("Webdav WriteFile (PUT) code: %d", code)
 }
+
+func (c *Client) MoveFile(srcPath, dstPath string) error {
+	code, err := c.adapter.MoveFile(c.toAbsPath(srcPath), c.toAbsPath(dstPath))
+	if err != nil {
+		return err
+	}
+	if code >= 200 && code < 300 {
+		return nil
+	}
+	return fmt.Errorf("Webdav MoveFile (MOVE) code: %d", code)
+}

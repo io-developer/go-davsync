@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -54,7 +55,13 @@ func (c *Adapter) createRequest(
 ) (*http.Request, error) {
 	uri := c.buildURI(path)
 
-	log.Printf("createRequest\n  path: %s\n  uri: %s\n  method: %s\n\n", path, uri, method)
+	log.Printf(
+		"createRequest\n  path: %s\n  uri: %s\n  method: %s\n  headers: %#v\n\n",
+		path,
+		uri,
+		method,
+		headers,
+	)
 
 	req, err := http.NewRequest(method, uri, body)
 	if err != nil {
@@ -160,6 +167,21 @@ func (c *Adapter) GetFile(path string) (r io.ReadCloser, code int, err error) {
 
 func (c *Adapter) PutFile(path string, body io.Reader) (code int, err error) {
 	req, err := c.createRequest("PUT", path, body, map[string]string{})
+	if err != nil {
+		return
+	}
+	resp, err := c.request(req)
+	if err != nil {
+		return
+	}
+	code = resp.StatusCode
+	return
+}
+
+func (c *Adapter) MoveFile(srcPath, dstPath string) (code int, err error) {
+	req, err := c.createRequest("MOVE", srcPath, nil, map[string]string{
+		"Destination": c.buildURI(url.PathEscape(dstPath)),
+	})
 	if err != nil {
 		return
 	}
