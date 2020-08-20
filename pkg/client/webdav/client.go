@@ -40,12 +40,16 @@ func NewClient(opt ClientOpt) *Client {
 	}
 }
 
+func (c *Client) getBaseDir() string {
+	return filepath.Join("/", strings.TrimRight(c.BaseDir, "/"))
+}
+
 func (c *Client) toRelPath(absPath string) string {
-	return filepath.Join(c.BaseDir, absPath)
+	return filepath.Join("/", strings.TrimPrefix(absPath, c.getBaseDir()))
 }
 
 func (c *Client) toAbsPath(relPath string) string {
-	return filepath.Join(c.BaseDir, relPath)
+	return filepath.Join(c.getBaseDir(), relPath)
 }
 
 func (c *Client) ReadTree() (paths []string, resources map[string]client.Resource, err error) {
@@ -126,8 +130,7 @@ func (c *Client) ReadPropfinds(
 		return
 	}
 	for _, item := range items {
-		absPath := item.GetNormalizedAbsPath()
-		relPath := strings.TrimPrefix(absPath, c.BaseDir)
+		relPath := c.toRelPath(item.GetNormalizedAbsPath())
 		if _, exists := outPropfinds[relPath]; exists {
 			continue
 		}
@@ -184,11 +187,11 @@ func (c *Client) makeDir(absPath string) (code int, err error) {
 		log.Println("  exists in parents")
 		return 200, nil
 	}
-	path := c.toRelPath(absPath)
-	if _, exists := c.createdDirs[path]; exists {
+	if _, exists := c.createdDirs[absPath]; exists {
 		log.Println("  exists in createdDirs")
 		return 200, nil
 	}
+	path := c.toRelPath(absPath)
 	if propfind, exists := c.propfinds[path]; exists && propfind.IsCollection() {
 		log.Println("  exists in propfinds")
 		return 200, nil
@@ -196,7 +199,7 @@ func (c *Client) makeDir(absPath string) (code int, err error) {
 	code, err = c.adapter.Mkcol(absPath)
 	if err == nil && code >= 200 && code < 300 {
 		log.Println("  MADE")
-		c.createdDirs[path] = path
+		c.createdDirs[absPath] = absPath
 	}
 	return
 }
