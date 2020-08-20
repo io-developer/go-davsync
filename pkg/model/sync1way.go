@@ -1,13 +1,16 @@
 package model
 
 import (
+	"fmt"
 	"log"
+	"time"
 
 	"github.com/io-developer/go-davsync/pkg/client"
 )
 
 type Sync1WayOpt struct {
 	IgnoreExisting bool
+	UndirectUpload bool
 	AllowDelete    bool
 }
 
@@ -17,8 +20,8 @@ type Sync1Way struct {
 	opt Sync1WayOpt
 
 	// sync-time data
-	srcPaths []string
-	srcNodes map[string]client.Resource
+	srcPaths     []string
+	srcResources map[string]client.Resource
 
 	dstPaths []string
 	dstNodes map[string]client.Resource
@@ -56,11 +59,11 @@ func (s *Sync1Way) Sync() error {
 func (s *Sync1Way) readTrees() error {
 	var err error
 
-	s.srcPaths, s.srcNodes, err = s.src.ReadTree()
+	s.srcPaths, s.srcResources, err = s.src.ReadTree()
 	if err != nil {
 		return err
 	}
-	logTree(s.srcPaths, s.srcNodes)
+	logTree(s.srcPaths, s.srcResources)
 
 	s.dstPaths, s.dstNodes, err = s.dst.ReadTree()
 	if err != nil {
@@ -81,23 +84,23 @@ func logTree(paths []string, nodes map[string]client.Resource) {
 }
 
 func (s *Sync1Way) diff() {
-	s.bothPaths, s.addPaths, s.delPaths = compareNodes(s.srcNodes, s.dstNodes)
+	s.bothPaths, s.addPaths, s.delPaths = compareNodes(s.srcResources, s.dstNodes)
 	for _, path := range s.bothPaths {
 		log.Println("BOTH", path)
 	}
 	for _, path := range s.addPaths {
-		log.Println("ADD", path)
+		log.Println(" ADD", path)
 	}
 	for _, path := range s.delPaths {
-		log.Println("DEL", path)
+		log.Println(" DEL", path)
 	}
 }
 
 func (s *Sync1Way) makeDirs() error {
 	for _, path := range s.addPaths {
-		node := s.srcNodes[path]
+		node := s.srcResources[path]
 		if node.IsDir {
-			log.Println("TRY ADD DIR", path)
+			log.Println("MKDIR", path)
 			err := s.dst.MakeDir(path, true)
 			if err != nil {
 				return err
@@ -109,22 +112,56 @@ func (s *Sync1Way) makeDirs() error {
 
 func (s *Sync1Way) writeFiles() error {
 	for _, path := range s.addPaths {
-		node := s.srcNodes[path]
-		if !node.IsDir {
-			log.Println("TRY WRITE FILE", path)
-
-			reader, err := s.src.ReadFile(path)
-			if err != nil {
-				return err
-			}
-			readProgress := NewReadProgress(reader, node.Size)
-			err = s.dst.WriteFile(path, readProgress)
+		res := s.srcResources[path]
+		if !res.IsDir {
+			err := s.writeFile(path, res)
 			if err != nil {
 				return err
 			}
 		}
 	}
 	return nil
+}
+
+func (s *Sync1Way) writeFile(path string, res client.Resource) error {
+	log.Println()
+	log.Println("WRITE FILE", path)
+
+	uploadPath := path
+	if s.opt.UndirectUpload {
+		uploadPath = getUploadPath(path)
+		log.Println("  UNDIRECT UPLOAD ", uploadPath)
+	}
+	err := s.dst.MakeDirFor(uploadPath)
+	if err != nil {
+		return err
+	}
+	err = s.dst.MakeDirFor(path)
+	if err != nil {
+		return err
+	}
+	reader, err := s.src.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	readProgress := NewReadProgress(reader, res.Size)
+	err = s.dst.WriteFile(uploadPath, readProgress)
+	if err != nil {
+		reader.Close()
+		return err
+	}
+	if path != uploadPath {
+		log.Printf("  MOVING %s -> %s\n", uploadPath, path)
+		err = s.dst.MoveFile(uploadPath, path)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func getUploadPath(src string) string {
+	return fmt.Sprintf("/ucam-%s.bin", time.Now().Format("20060102150405"))
 }
 
 func compareNodes(from, to map[string]client.Resource) (both, add, del []string) {
