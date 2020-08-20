@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -40,16 +39,12 @@ func NewClient(opt ClientOpt) *Client {
 	}
 }
 
-func (c *Client) getBaseDir() string {
-	return filepath.Join("/", strings.TrimRight(c.BaseDir, "/"))
-}
-
 func (c *Client) toRelPath(absPath string) string {
-	return filepath.Join("/", strings.TrimPrefix(absPath, c.getBaseDir()))
+	return client.PathRel(absPath, c.BaseDir)
 }
 
 func (c *Client) toAbsPath(relPath string) string {
-	return filepath.Join(c.getBaseDir(), relPath)
+	return client.PathAbs(relPath, c.BaseDir)
 }
 
 func (c *Client) ReadTree() (paths []string, resources map[string]client.Resource, err error) {
@@ -109,7 +104,7 @@ func (c *Client) readParents() (parents map[string]Propfind, err error) {
 		if len(some.Propfinds) < 1 {
 			return
 		}
-		normPath := client.NormalizePath(path, true)
+		normPath := client.PathNormalize(path, true)
 		parents[normPath] = some.Propfinds[0]
 	}
 	return
@@ -157,7 +152,7 @@ func (c *Client) MakeDirFor(filePath string) error {
 		return err
 	}
 	dir := re.ReplaceAllString(filePath, "")
-	return c.makeDirRecursive(dir)
+	return c.makeDirRecursive(c.toAbsPath(dir))
 }
 
 func (c *Client) makeDirRecursive(absPath string) error {
@@ -182,7 +177,7 @@ func (c *Client) makeDirRecursive(absPath string) error {
 func (c *Client) makeDir(absPath string) (code int, err error) {
 	log.Println("makeDir", absPath)
 
-	absPath = client.NormalizePath(absPath, true)
+	absPath = client.PathNormalize(absPath, true)
 	if _, exists := c.parentPropfinds[absPath]; exists {
 		log.Println("  exists in parents")
 		return 200, nil

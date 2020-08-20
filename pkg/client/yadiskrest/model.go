@@ -36,7 +36,7 @@ func (r Resource) IsDir() bool {
 
 func (r Resource) GetNormalizedAbsPath() string {
 	absPath := strings.TrimPrefix(r.Path, "disk:")
-	return client.NormalizePath(absPath, r.IsDir())
+	return client.PathNormalize(absPath, r.IsDir())
 }
 
 type UploadInfo struct {

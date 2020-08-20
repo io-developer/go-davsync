@@ -54,11 +54,11 @@ func (c *Client) getBaseDir() string {
 }
 
 func (c *Client) toRelPath(absPath string) string {
-	return filepath.Join("/", strings.TrimPrefix(absPath, c.getBaseDir()))
+	return client.PathRel(absPath, c.BaseDir)
 }
 
 func (c *Client) toAbsPath(relPath string) string {
-	return filepath.Join(c.getBaseDir(), relPath)
+	return client.PathAbs(relPath, c.BaseDir)
 }
 
 func (c *Client) ReadTree() (paths []string, nodes map[string]client.Resource, err error) {

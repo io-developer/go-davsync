@@ -29,7 +29,7 @@ func (c *Client) ReadTree() (paths []string, nodes map[string]client.Resource, e
 	paths = []string{}
 	nodes = map[string]client.Resource{}
 	err = filepath.Walk(c.BaseDir, func(absPath string, info os.FileInfo, err error) error {
-		absPath = client.NormalizePath(absPath, info.IsDir())
+		absPath = client.PathNormalize(absPath, info.IsDir())
 		path := strings.TrimPrefix(absPath, strings.TrimRight(c.BaseDir, "/"))
 		paths = append(paths, path)
 		nodes[path] = client.Resource{

@@ -39,7 +39,7 @@ func (p *Propfind) GetHrefUnicode() string {
 }
 
 func (p *Propfind) GetNormalizedAbsPath() string {
-	return client.NormalizePath(p.GetHrefUnicode(), p.IsCollection())
+	return client.PathNormalize(p.GetHrefUnicode(), p.IsCollection())
 }
 
 type DavTime struct {
