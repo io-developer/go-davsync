@@ -1,9 +1,12 @@
 package client
 
-import "strings"
+import (
+	"path/filepath"
+	"strings"
+)
 
 func NormalizePath(path string, isDir bool) string {
-	norm := "/" + strings.Trim(path, "/")
+	norm := filepath.Join("/", strings.Trim(path, "/"))
 	if isDir {
 		norm += "/"
 	}

@@ -49,6 +49,18 @@ func NewClient(opt ClientOpt) *Client {
 	}
 }
 
+func (c *Client) getBaseDir() string {
+	return filepath.Join("/", strings.TrimRight(c.BaseDir, "/"))
+}
+
+func (c *Client) toRelPath(absPath string) string {
+	return filepath.Join("/", strings.TrimPrefix(absPath, c.getBaseDir()))
+}
+
+func (c *Client) toAbsPath(relPath string) string {
+	return filepath.Join(c.getBaseDir(), relPath)
+}
+
 func (c *Client) ReadTree() (paths []string, nodes map[string]client.Resource, err error) {
 	items, err := c.GetResources()
 	if err != nil {
@@ -103,9 +115,8 @@ func (c *Client) makeDirRecursive(path string) error {
 }
 
 func (c *Client) makeDir(path string) (code int, err error) {
-	absPath := filepath.Join("/", c.BaseDir, path)
 	req, err := c.createRequest("PUT", "/resources", url.Values{
-		"path": []string{absPath},
+		"path": []string{c.toAbsPath(path)},
 	}, nil)
 	if err != nil {
 		return
@@ -152,9 +163,8 @@ func (c *Client) ReadFile(path string) (reader io.ReadCloser, err error) {
 }
 
 func (c *Client) WriteFile(path string, content io.ReadCloser) error {
-	absPath := filepath.Join("/", c.BaseDir, path)
 	resp, err := c.request("GET", "/resources/upload", url.Values{
-		"path":      []string{absPath},
+		"path":      []string{c.toAbsPath(path)},
 		"overwrite": []string{"true"},
 	})
 	if err != nil {
@@ -194,6 +204,10 @@ func (c *Client) WriteFile(path string, content io.ReadCloser) error {
 	return fmt.Errorf("Upload failed with code %d, '%s'", resp.StatusCode, resp.Status)
 }
 
+func (c *Client) MoveFile(srcPath, dstPath string) error {
+	return nil
+}
+
 func (c *Client) GetResources() (map[string]Resource, error) {
 	if c.resources != nil {
 		return c.resources, nil
@@ -213,20 +227,13 @@ func (c *Client) GetResources() (map[string]Resource, error) {
 	c.resourcePaths = []string{}
 	for _, item := range r.Items {
 		absPath := item.GetNormalizedAbsPath()
-		path, isSubset := c.relPathFrom(absPath)
-		if isSubset {
+		if strings.HasPrefix(absPath, c.getBaseDir()) {
+			path := c.toRelPath(absPath)
 			c.resources[path] = item
 			c.resourcePaths = append(c.resourcePaths, path)
 		}
 	}
 	return c.resources, nil
-}
-
-func (c *Client) relPathFrom(absPath string) (path string, isSubset bool) {
-	prefix := "disk:" + strings.TrimRight(c.BaseDir, "/")
-	path = filepath.Join("/", strings.TrimPrefix(absPath, prefix))
-	isSubset = strings.HasPrefix(absPath, prefix)
-	return
 }
 
 // http impl
