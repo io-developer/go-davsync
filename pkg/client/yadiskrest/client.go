@@ -205,7 +205,23 @@ func (c *Client) WriteFile(path string, content io.ReadCloser) error {
 }
 
 func (c *Client) MoveFile(srcPath, dstPath string) error {
-	return nil
+	req, err := c.createRequest("POST", "/resources/move", url.Values{
+		"from":      []string{c.toAbsPath(srcPath)},
+		"path":      []string{c.toAbsPath(dstPath)},
+		"overwrite": []string{"true"},
+	}, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.sendRequest(req)
+	if err != nil {
+		return err
+	}
+	code := resp.StatusCode
+	if code >= 200 && code < 300 {
+		return nil
+	}
+	return fmt.Errorf("Unexpected MoveFile (MOVE) code: %d", code)
 }
 
 func (c *Client) GetResources() (map[string]Resource, error) {
