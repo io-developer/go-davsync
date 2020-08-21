@@ -12,20 +12,16 @@ import (
 	"time"
 )
 
-type AdapterOpt struct {
-	ClientOpt
-}
-
 type Adapter struct {
 	RetryLimit int
 	RetryDelay time.Duration
 
-	opt         AdapterOpt
+	opt         Options
 	httpClient  http.Client
 	baseHeaders map[string]string
 }
 
-func NewAdapter(opt AdapterOpt) *Adapter {
+func NewAdapter(opt Options) *Adapter {
 	return &Adapter{
 		opt:        opt,
 		httpClient: http.Client{},

@@ -72,16 +72,14 @@ func createFsClient(args Args) *fs.Client {
 }
 
 func createRemoteDavClient(args Args) *webdav.Client {
-	opt := webdav.ClientOpt{
+	return webdav.NewClient(webdav.Options{
+		BaseDir:       args.remotePath,
 		DavUri:        args.secrets.BaseURI,
 		AuthToken:     args.secrets.Token,
 		AuthTokenType: args.secrets.TokenType,
 		AuthUser:      args.secrets.User,
 		AuthPass:      args.secrets.Pass,
-	}
-	client := webdav.NewClient(opt)
-	client.BaseDir = args.remotePath
-	return client
+	})
 }
 
 func createRemoteYaClient(args Args) *yadiskrest.Client {

@@ -11,6 +11,7 @@ import (
 )
 
 type ClientOpt struct {
+	BaseDir       string
 	DavUri        string
 	AuthToken     string
 	AuthTokenType string
@@ -21,9 +22,7 @@ type ClientOpt struct {
 type Client struct {
 	client.Client
 
-	BaseDir string
-
-	opt             ClientOpt
+	opt             Options
 	adapter         *Adapter
 	parentPropfinds map[string]Propfind
 	propfinds       map[string]Propfind
@@ -31,20 +30,12 @@ type Client struct {
 	createdDirs     map[string]string
 }
 
-func NewClient(opt ClientOpt) *Client {
+func NewClient(opt Options) *Client {
 	return &Client{
 		opt:         opt,
-		adapter:     NewAdapter(AdapterOpt{opt}),
+		adapter:     NewAdapter(opt),
 		createdDirs: make(map[string]string),
 	}
-}
-
-func (c *Client) toRelPath(absPath string) string {
-	return client.PathRel(absPath, c.BaseDir)
-}
-
-func (c *Client) toAbsPath(relPath string) string {
-	return client.PathAbs(relPath, c.BaseDir)
 }
 
 func (c *Client) ReadTree() (paths []string, resources map[string]client.Resource, err error) {
@@ -84,7 +75,7 @@ func (c *Client) GetPropfinds() (map[string]Propfind, error) {
 
 func (c *Client) readParents() (parents map[string]Propfind, err error) {
 	parents = make(map[string]Propfind)
-	parts := strings.Split(strings.Trim(c.BaseDir, "/"), "/")
+	parts := strings.Split(strings.Trim(c.opt.BaseDir, "/"), "/")
 	total := len(parts)
 	if total < 1 {
 		return
@@ -115,7 +106,7 @@ func (c *Client) ReadPropfinds(
 	outPaths *[]string,
 	outPropfinds map[string]Propfind,
 ) (err error) {
-	some, code, err := c.adapter.Propfind(c.toAbsPath(path), "infinity")
+	some, code, err := c.adapter.Propfind(c.opt.toAbsPath(path), "infinity")
 	items := some.Propfinds
 	if code == 404 {
 		err = nil
@@ -125,7 +116,7 @@ func (c *Client) ReadPropfinds(
 		return
 	}
 	for _, item := range items {
-		relPath := c.toRelPath(item.GetNormalizedAbsPath())
+		relPath := c.opt.toRelPath(item.GetNormalizedAbsPath())
 		if _, exists := outPropfinds[relPath]; exists {
 			continue
 		}
@@ -140,9 +131,9 @@ func (c *Client) ReadPropfinds(
 
 func (c *Client) MakeDir(path string, recursive bool) error {
 	if recursive {
-		return c.makeDirRecursive(c.toAbsPath(path))
+		return c.makeDirRecursive(c.opt.toAbsPath(path))
 	}
-	_, err := c.makeDir(c.toAbsPath(path))
+	_, err := c.makeDir(c.opt.toAbsPath(path))
 	return err
 }
 
@@ -152,7 +143,7 @@ func (c *Client) MakeDirFor(filePath string) error {
 		return err
 	}
 	dir := re.ReplaceAllString(filePath, "")
-	return c.makeDirRecursive(c.toAbsPath(dir))
+	return c.makeDirRecursive(c.opt.toAbsPath(dir))
 }
 
 func (c *Client) makeDirRecursive(absPath string) error {
@@ -186,7 +177,7 @@ func (c *Client) makeDir(absPath string) (code int, err error) {
 		log.Println("  exists in createdDirs")
 		return 200, nil
 	}
-	path := c.toRelPath(absPath)
+	path := c.opt.toRelPath(absPath)
 	if propfind, exists := c.propfinds[path]; exists && propfind.IsCollection() {
 		log.Println("  exists in propfinds")
 		return 200, nil
@@ -200,7 +191,7 @@ func (c *Client) makeDir(absPath string) (code int, err error) {
 }
 
 func (c *Client) ReadFile(path string) (reader io.ReadCloser, err error) {
-	reader, code, err := c.adapter.GetFile(c.toAbsPath(path))
+	reader, code, err := c.adapter.GetFile(c.opt.toAbsPath(path))
 	if err != nil {
 		return
 	}
@@ -212,7 +203,7 @@ func (c *Client) ReadFile(path string) (reader io.ReadCloser, err error) {
 }
 
 func (c *Client) WriteFile(path string, content io.ReadCloser) error {
-	code, err := c.adapter.PutFile(c.toAbsPath(path), content)
+	code, err := c.adapter.PutFile(c.opt.toAbsPath(path), content)
 	if err != nil {
 		return err
 	}
@@ -223,7 +214,10 @@ func (c *Client) WriteFile(path string, content io.ReadCloser) error {
 }
 
 func (c *Client) MoveFile(srcPath, dstPath string) error {
-	code, err := c.adapter.MoveFile(c.toAbsPath(srcPath), c.toAbsPath(dstPath))
+	code, err := c.adapter.MoveFile(
+		c.opt.toAbsPath(srcPath),
+		c.opt.toAbsPath(dstPath),
+	)
 	if err != nil {
 		return err
 	}
