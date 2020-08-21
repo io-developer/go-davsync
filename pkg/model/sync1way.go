@@ -10,7 +10,7 @@ import (
 
 type Sync1WayOpt struct {
 	IgnoreExisting bool
-	UndirectUpload bool
+	IndirectUpload bool
 	AllowDelete    bool
 }
 
@@ -128,9 +128,9 @@ func (s *Sync1Way) writeFile(path string, res client.Resource) error {
 	log.Println("WRITE FILE", path)
 
 	uploadPath := path
-	if s.opt.UndirectUpload {
+	if s.opt.IndirectUpload {
 		uploadPath = getUploadPath(path)
-		log.Println("  UNDIRECT UPLOAD ", uploadPath)
+		log.Println("  INDIRECT UPLOAD ", uploadPath)
 	}
 	err := s.dst.MakeDirFor(uploadPath)
 	if err != nil {

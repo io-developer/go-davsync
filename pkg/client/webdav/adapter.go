@@ -106,6 +106,8 @@ func (c *Adapter) request(req *http.Request) (resp *http.Response, err error) {
 }
 
 func (c *Adapter) Propfind(path string, depth string) (result PropfindSome, code int, err error) {
+	log.Println("Client.reqPropfind(): ", path, depth)
+
 	reqBody := strings.NewReader(
 		"<d:propfind xmlns:d='DAV:'>" +
 			"<d:allprop/>" +
@@ -114,8 +116,6 @@ func (c *Adapter) Propfind(path string, depth string) (result PropfindSome, code
 	req, err := c.createRequest("PROPFIND", path, reqBody, map[string]string{
 		"Depth": depth,
 	})
-	log.Println("Client.reqPropfind(): ", path, depth)
-
 	if err != nil {
 		return
 	}

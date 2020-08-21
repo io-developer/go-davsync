@@ -101,7 +101,7 @@ func main() {
 	src := createSrcClient(args)
 	dst := createDstClient(args)
 	sync := model.NewSync1Way(src, dst, model.Sync1WayOpt{
-		UndirectUpload: true,
+		IndirectUpload: true,
 		IgnoreExisting: true,
 		AllowDelete:    false,
 	})
