@@ -31,7 +31,7 @@ func NewAdapter(opt Options) *Adapter {
 			"Accept-Charset": "utf-8",
 			//"Accept-Encoding": "",
 		},
-		RetryLimit: 3,
+		RetryLimit: 30,
 		RetryDelay: 1 * time.Second,
 	}
 }
