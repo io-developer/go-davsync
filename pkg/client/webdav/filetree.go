@@ -3,6 +3,7 @@ package webdav
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/io-developer/go-davsync/pkg/client"
 )
@@ -60,107 +61,147 @@ func (c *FileTree) GetItems() (paths []string, items map[string]Propfind, err er
 	if c.items == nil {
 		reader := newFileTreeReader(c.opt)
 		err = reader.ReadDir("/")
-		c.itemPaths, c.items = reader.itemPaths, reader.items
+		c.itemPaths, c.items = reader.parsedPaths, reader.parsedItems
 	}
 	return c.itemPaths, c.items, err
 }
 
 type fileTreeReader struct {
-	opt       Options
-	items     map[string]Propfind
-	itemPaths []string
+	opt         Options
+	parsedItems map[string]Propfind
+	parsedPaths []string
 }
 
 func newFileTreeReader(opt Options) *fileTreeReader {
 	return &fileTreeReader{
-		opt:       opt,
-		items:     map[string]Propfind{},
-		itemPaths: []string{},
+		opt: opt,
 	}
 }
 
-func (r *fileTreeReader) ReadDir(path string) error {
-	fmt.Println("ReadDir", path)
+func (r *fileTreeReader) ReadDir(path string) (err error) {
+	fmt.Println("ReadDir ", path)
 
-	queue := 0
-	readCh := make(chan treeMsg)
-	completeCh := make(chan treeMsg)
-	errorCh := make(chan treeMsg)
+	paths := []string{}
+	items := map[string]Propfind{}
 
+	queue := make(chan treeMsg)
+	parsed := make(chan treeMsg)
+	completed := make(chan treeMsg)
+	errors := make(chan treeMsg)
+
+	numThreads := 1
+	fmt.Println("  stating threads", numThreads)
+	for i := 0; i < numThreads; i++ {
+		go r.thread(i, queue, parsed, completed, errors)
+	}
+	fmt.Println("  pushing root path msg", path)
 	go func() {
-		readCh <- treeMsg{
+		time.Sleep(time.Second)
+		queue <- treeMsg{
 			relPath: path,
 			depth:   "infinity",
 		}
 	}()
+	fmt.Println("  starting main loop...")
+	inProgress := true
+	for inProgress {
+		select {
+		case msg, success := <-parsed:
+			fmt.Printf("ReadDir parsed: %#v\n", msg)
+			if !success {
+				inProgress = false
+				break
+			}
+			if _, exists := items[msg.relPath]; !exists {
+				fmt.Println("  adding new payload ", msg.relPath)
+				paths = append(paths, msg.relPath)
+				items[msg.relPath] = msg.payload
+
+				if msg.payload.IsCollection() && msg.relPath != path {
+					fmt.Println("  reading subdir ", msg.relPath)
+					go func(msg treeMsg) {
+						queue <- msg
+					}(treeMsg{
+						relPath: msg.relPath,
+						depth:   msg.depth,
+					})
+				}
+			}
+
+		case msg, success := <-completed:
+			fmt.Printf("ReadDir completed: %#v\n", msg)
+			if !success {
+				inProgress = false
+				break
+			}
+
+		case msg, _ := <-errors:
+			fmt.Printf("ReadDir error: %#v\n", msg)
+			err = msg.err
+			inProgress = false
+			break
+		}
+	}
+
+	fmt.Println("ReadDir loop stopped, err:", err)
+	if err == nil {
+		r.parsedPaths = paths
+		r.parsedItems = items
+	}
+
+	close(queue)
+	close(parsed)
+	close(completed)
+	close(errors)
+
+	return
+}
+
+func (r *fileTreeReader) thread(id int, queue, parsed, completed, errors chan treeMsg) {
+	fmt.Println("Start thread ", id)
+	adapter := NewAdapter(r.opt)
 	for {
 		select {
-		case msg, success := <-readCh:
-			if success {
-				queue++
-				fmt.Printf("Read dir requested (queue %d): %#v\n", queue, msg)
-				go r.readDir(msg, readCh, completeCh, errorCh)
-			} else {
-				return nil
+		case msg, success := <-queue:
+			if !success {
+				return
 			}
-		case msg, success := <-completeCh:
-			if success {
-				queue--
-				fmt.Printf("Read dir complete (queue %d): %#v\n", queue, msg)
-			}
-			if !success || queue <= 0 {
-				return nil
-			}
-		case msg, success := <-errorCh:
-			if success {
-				queue--
-				fmt.Printf("Read dir error (queue %d): %#v\n", queue, msg)
-				return msg.err
-			}
-			return nil
-		}
-	}
-}
+			fmt.Println(id, "Tree read dir", msg.relPath)
 
-func (r *fileTreeReader) getAdapter() *Adapter {
-	return NewAdapter(r.opt)
-}
-
-func (r *fileTreeReader) readDir(msg treeMsg, readCh, completeCh, errCh chan treeMsg) {
-	fmt.Println("Tree read dir", msg.relPath)
-
-	adapter := r.getAdapter()
-	some, code, err := adapter.Propfind(r.opt.toAbsPath(msg.relPath), "infinity")
-	items := some.Propfinds
-	if code == 404 {
-		err = nil
-		items = []Propfind{}
-	}
-	if err != nil {
-		msg.err = err
-		errCh <- msg
-		return
-	}
-	for _, item := range items {
-		// TODO: fix concurrent map access!!
-		relPath := r.opt.toRelPath(item.GetNormalizedAbsPath())
-		if _, exists := r.items[relPath]; exists {
-			continue
-		}
-		r.itemPaths = append(r.itemPaths, relPath)
-		r.items[relPath] = item
-		if item.IsCollection() && relPath != msg.relPath {
-			readCh <- treeMsg{
-				relPath: relPath,
-				depth:   msg.depth,
+			some, code, err := adapter.Propfind(r.opt.toAbsPath(msg.relPath), "infinity")
+			items := some.Propfinds
+			if code == 404 {
+				err = nil
+				items = []Propfind{}
 			}
+			if err != nil {
+				fmt.Println(id, " thread error", code, err)
+
+				msg.err = err
+				msg.errHttpCode = code
+				errors <- msg
+				return
+			}
+			for _, item := range items {
+				relPath := r.opt.toRelPath(item.GetNormalizedAbsPath())
+				parsed <- treeMsg{
+					payload: item,
+					relPath: relPath,
+					depth:   msg.depth,
+				}
+			}
+
+			completed <- msg
 		}
+		fmt.Println(id, " thread loop")
 	}
-	completeCh <- msg
 }
 
 type treeMsg struct {
-	relPath string
-	depth   string
-	err     error
+	hasPayload  bool
+	payload     Propfind
+	relPath     string
+	depth       string
+	err         error
+	errHttpCode int
 }

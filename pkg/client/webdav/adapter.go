@@ -31,8 +31,8 @@ func NewAdapter(opt Options) *Adapter {
 			"Accept-Charset": "utf-8",
 			//"Accept-Encoding": "",
 		},
-		RetryLimit: 30,
-		RetryDelay: 1 * time.Second,
+		RetryLimit: 3,
+		RetryDelay: 10 * time.Second,
 	}
 }
 
@@ -51,14 +51,6 @@ func (c *Adapter) createRequest(
 ) (*http.Request, error) {
 	uri := c.buildURI(path)
 
-	log.Printf(
-		"createRequest\n  path: %s\n  uri: %s\n  method: %s\n  headers: %#v\n\n",
-		path,
-		uri,
-		method,
-		headers,
-	)
-
 	req, err := http.NewRequest(method, uri, body)
 	if err != nil {
 		return req, err
@@ -69,6 +61,15 @@ func (c *Adapter) createRequest(
 	for key, val := range headers {
 		req.Header.Add(key, val)
 	}
+
+	log.Printf(
+		"createRequest\n  path: %s\n  uri: %s\n  method: %s\n  headers: %#v\n\n",
+		path,
+		uri,
+		method,
+		req.Header,
+	)
+
 	return c.auth(req), err
 }
 
@@ -88,16 +89,15 @@ func (c *Adapter) auth(req *http.Request) *http.Request {
 
 func (c *Adapter) request(req *http.Request) (resp *http.Response, err error) {
 	for i := 0; i < c.RetryLimit; i++ {
-		resp, err = c.httpClient.Do(req)
-		if err != nil {
-			continue
+		httpClient := http.Client{}
+		resp, err = httpClient.Do(req)
+		if err == nil && resp.StatusCode != 429 {
+			return
 		}
-		if resp.StatusCode == 429 {
-			time.Sleep(c.RetryDelay)
-			continue
-		}
-		break
+		log.Printf("request retry %d of %d: ", i+1, c.RetryLimit)
+		time.Sleep(c.RetryDelay)
 	}
+	log.Println("request tried out", err)
 	return
 }
 
@@ -113,10 +113,12 @@ func (c *Adapter) Propfind(path string, depth string) (result PropfindSome, code
 		"Depth": depth,
 	})
 	if err != nil {
+		fmt.Println("1")
 		return
 	}
 	resp, err := c.request(req)
 	if err != nil {
+		fmt.Println("2")
 		return
 	}
 	code = resp.StatusCode
@@ -128,6 +130,9 @@ func (c *Adapter) Propfind(path string, depth string) (result PropfindSome, code
 	log.Println("  response: ", string(bytes))
 
 	err = xml.Unmarshal(bytes, &result)
+	if err != nil {
+		fmt.Println("3")
+	}
 	return
 }
 
