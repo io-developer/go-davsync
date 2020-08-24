@@ -31,8 +31,8 @@ func NewAdapter(opt Options) *Adapter {
 			"Accept-Charset": "utf-8",
 			//"Accept-Encoding": "",
 		},
-		RetryLimit: 3,
-		RetryDelay: 10 * time.Second,
+		RetryLimit: 100,
+		RetryDelay: 1 * time.Second,
 	}
 }
 
@@ -88,10 +88,18 @@ func (c *Adapter) auth(req *http.Request) *http.Request {
 }
 
 func (c *Adapter) request(req *http.Request) (resp *http.Response, err error) {
+	return c.httpClient.Do(req)
+}
+
+func (c *Adapter) requestTry(reqFn func() (*http.Request, error)) (resp *http.Response, err error) {
+	var req *http.Request
 	for i := 0; i < c.RetryLimit; i++ {
-		httpClient := http.Client{}
-		resp, err = httpClient.Do(req)
-		if err == nil && resp.StatusCode != 429 {
+		resp = nil
+		req, err = reqFn()
+		if err == nil {
+			resp, err = c.httpClient.Do(req)
+		}
+		if err == nil && resp != nil && resp.StatusCode != 429 {
 			return
 		}
 		log.Printf("request retry %d of %d: ", i+1, c.RetryLimit)
@@ -104,19 +112,16 @@ func (c *Adapter) request(req *http.Request) (resp *http.Response, err error) {
 func (c *Adapter) Propfind(path string, depth string) (result PropfindSome, code int, err error) {
 	log.Println("Client.reqPropfind(): ", path, depth)
 
-	reqBody := strings.NewReader(
-		"<d:propfind xmlns:d='DAV:'>" +
-			"<d:allprop/>" +
-			"</d:propfind>",
-	)
-	req, err := c.createRequest("PROPFIND", path, reqBody, map[string]string{
-		"Depth": depth,
+	resp, err := c.requestTry(func() (*http.Request, error) {
+		reqBody := strings.NewReader(
+			"<d:propfind xmlns:d='DAV:'>" +
+				"<d:allprop/>" +
+				"</d:propfind>",
+		)
+		return c.createRequest("PROPFIND", path, reqBody, map[string]string{
+			"Depth": depth,
+		})
 	})
-	if err != nil {
-		fmt.Println("1")
-		return
-	}
-	resp, err := c.request(req)
 	if err != nil {
 		fmt.Println("2")
 		return
