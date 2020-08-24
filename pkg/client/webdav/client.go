@@ -57,7 +57,7 @@ func (c *Client) ReadTree() (paths []string, resources map[string]client.Resourc
 			UserData: propfind,
 		}
 	}
-	log.Printf("DAV ReadTree:\n%#v\n\n", resources)
+	//log.Printf("DAV ReadTree:\n%#v\n\n", resources)
 	return
 }
 

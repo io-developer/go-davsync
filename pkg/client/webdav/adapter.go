@@ -32,7 +32,7 @@ func NewAdapter(opt Options) *Adapter {
 			//"Accept-Encoding": "",
 		},
 		RetryLimit: 100,
-		RetryDelay: 1 * time.Second,
+		RetryDelay: 4 * time.Second,
 	}
 }
 
@@ -132,7 +132,7 @@ func (c *Adapter) Propfind(path string, depth string) (result PropfindSome, code
 		return
 	}
 	bytes, err := ioutil.ReadAll(resp.Body)
-	log.Println("  response: ", string(bytes))
+	//	log.Println("  response: ", string(bytes))
 
 	err = xml.Unmarshal(bytes, &result)
 	if err != nil {

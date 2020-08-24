@@ -78,9 +78,11 @@ func logTree(paths []string, nodes map[string]client.Resource) {
 	for _, path := range paths {
 		log.Println(path)
 	}
-	for path, node := range nodes {
-		log.Printf("\n%s\n%#v\n\n", path, node)
-	}
+	/*
+		for path, node := range nodes {
+			log.Printf("\n%s\n%#v\n\n", path, node)
+		}
+	*/
 }
 
 func (s *Sync1Way) diff() {
