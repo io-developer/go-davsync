@@ -3,7 +3,6 @@ package webdav
 import (
 	"fmt"
 	"io"
-	"log"
 	"regexp"
 	"strings"
 
@@ -57,7 +56,6 @@ func (c *Client) ReadTree() (paths []string, resources map[string]client.Resourc
 			UserData: propfind,
 		}
 	}
-	//log.Printf("DAV ReadTree:\n%#v\n\n", resources)
 	return
 }
 
@@ -98,16 +96,12 @@ func (c *Client) makeDirRecursive(absPath string) error {
 }
 
 func (c *Client) makeDir(absPath string) (code int, err error) {
-	log.Println("makeDir", absPath)
-
 	absPath = client.PathNormalize(absPath, true)
 	parents, err := c.fileTree.GetParents()
 	if _, exists := parents[absPath]; exists {
-		log.Println("  exists in parents")
 		return 200, nil
 	}
 	if _, exists := c.createdDirs[absPath]; exists {
-		log.Println("  exists in createdDirs")
 		return 200, nil
 	}
 	path := c.opt.toRelPath(absPath)
@@ -116,12 +110,10 @@ func (c *Client) makeDir(absPath string) (code int, err error) {
 		return 0, err
 	}
 	if item, exists := items[path]; exists && item.IsCollection() {
-		log.Println("  exists in items")
 		return 200, nil
 	}
 	code, err = c.adapter.Mkcol(absPath)
 	if err == nil && code >= 200 && code < 300 {
-		log.Println("  DIR CREATED", absPath)
 		c.createdDirs[absPath] = absPath
 	}
 	return

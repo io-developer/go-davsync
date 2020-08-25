@@ -2,6 +2,7 @@ package webdav
 
 import (
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/io-developer/go-davsync/pkg/client"
@@ -73,14 +74,24 @@ type fileTreeReader struct {
 }
 
 func newFileTreeReader(opt Options, numThreads int) *fileTreeReader {
+	if numThreads < 1 {
+		numThreads = 1
+	}
 	return &fileTreeReader{
 		opt:        opt,
 		numThreads: numThreads,
 	}
 }
 
+func (r *fileTreeReader) log(msg string) {
+	log.Printf("Dav tree: %s\n", msg)
+}
+
 func (r *fileTreeReader) ReadDir(path string) (err error) {
-	fmt.Println("ReadDir ", path)
+	queueCounter := 0
+	logMain := func(msg string) {
+		r.log(fmt.Sprintf("[main, queue=%d]: %s", queueCounter, msg))
+	}
 
 	paths := []string{}
 	items := map[string]Propfind{}
@@ -91,13 +102,11 @@ func (r *fileTreeReader) ReadDir(path string) (err error) {
 	errors := make(chan treeMsg)
 
 	numThreads := r.numThreads
-	fmt.Println("  stating threads", numThreads)
 	for i := 0; i < numThreads; i++ {
 		go r.thread(i, queue, parsed, completed, errors)
 	}
 
-	fmt.Println("  pushing root path msg", path)
-	queueCounter := 1
+	queueCounter++
 	go func() {
 		queue <- treeMsg{
 			relPath: path,
@@ -105,24 +114,24 @@ func (r *fileTreeReader) ReadDir(path string) (err error) {
 		}
 	}()
 
-	fmt.Println("  starting main loop...")
+	logMain("Starting..")
 	inProgress := true
 	for inProgress {
 		select {
 		case msg, success := <-parsed:
-			fmt.Printf("ReadDir parsed: %d, %s\n", queueCounter, msg.relPath)
 			if !success {
 				inProgress = false
 				break
 			}
 			if _, exists := items[msg.relPath]; !exists {
-				fmt.Println("  adding new payload ", msg.relPath)
+				logMain(fmt.Sprintf("Parsed new: %s", msg.relPath))
+
 				paths = append(paths, msg.relPath)
 				items[msg.relPath] = msg.payload
 
 				if msg.payload.IsCollection() && msg.relPath != path {
+					logMain("  subdir found, pushing to queue")
 					queueCounter++
-					fmt.Printf("  reading subdir %d, %s\n", queueCounter, msg.relPath)
 					go func(msg treeMsg) {
 						queue <- msg
 					}(treeMsg{
@@ -130,11 +139,13 @@ func (r *fileTreeReader) ReadDir(path string) (err error) {
 						depth:   msg.depth,
 					})
 				}
+			} else {
+				logMain(fmt.Sprintf("Parsed existed: %s", msg.relPath))
 			}
 
 		case msg, success := <-completed:
 			queueCounter--
-			fmt.Printf("ReadDir completed: %d, %s\n", queueCounter, msg.relPath)
+			logMain(fmt.Sprintf("Complete: %s", msg.relPath))
 			if !success {
 				inProgress = false
 				break
@@ -142,7 +153,7 @@ func (r *fileTreeReader) ReadDir(path string) (err error) {
 
 		case msg, _ := <-errors:
 			queueCounter--
-			fmt.Printf("ReadDir error: %d, %s\n", queueCounter, msg.relPath)
+			logMain(fmt.Sprintf("ERROR: %s", msg.relPath))
 			err = msg.err
 			inProgress = false
 			break
@@ -151,10 +162,12 @@ func (r *fileTreeReader) ReadDir(path string) (err error) {
 		inProgress = inProgress && queueCounter > 0
 	}
 
-	fmt.Println("ReadDir loop stopped, err:", err)
 	if err == nil {
+		logMain("Complete")
 		r.parsedPaths = paths
 		r.parsedItems = items
+	} else {
+		logMain(fmt.Sprintf("Stopped with error: %v", err))
 	}
 
 	close(queue)
@@ -166,25 +179,32 @@ func (r *fileTreeReader) ReadDir(path string) (err error) {
 }
 
 func (r *fileTreeReader) thread(id int, queue, parsed, completed, errors chan treeMsg) {
-	fmt.Println("Start thread ", id)
+	curPath := "-"
+	logThread := func(msg string) {
+		r.log(fmt.Sprintf("[thread %d] '%s': %s", id, curPath, msg))
+	}
+	logThread("Thread started..")
+
 	adapter := NewAdapter(r.opt)
 	for {
 		select {
 		case msg, success := <-queue:
 			if !success {
-				fmt.Println(id, "Stop thread", id)
+				logThread("Thread exited")
 				return
 			}
-			fmt.Println(id, "Tree read dir", msg.relPath)
+			curPath = msg.relPath
 
+			logThread("propfind..")
 			some, code, err := adapter.Propfind(r.opt.toAbsPath(msg.relPath), "infinity")
 			items := some.Propfinds
 			if code == 404 {
+				logThread("http 404")
 				err = nil
 				items = []Propfind{}
 			}
 			if err != nil {
-				fmt.Println(id, " thread error", code, err)
+				logThread(fmt.Sprintf("ERROR code=%d, err: %v", code, err))
 
 				msg.err = err
 				msg.errHttpCode = code
@@ -201,8 +221,8 @@ func (r *fileTreeReader) thread(id int, queue, parsed, completed, errors chan tr
 			}
 
 			completed <- msg
+			curPath = "-"
 		}
-		fmt.Println(id, " thread loop")
 	}
 }
 

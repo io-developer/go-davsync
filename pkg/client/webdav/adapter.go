@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -62,7 +61,7 @@ func (c *Adapter) createRequest(
 		req.Header.Add(key, val)
 	}
 
-	log.Printf(
+	fmt.Printf(
 		"createRequest\n  path: %s\n  uri: %s\n  method: %s\n  headers: %#v\n\n",
 		path,
 		uri,
@@ -102,16 +101,14 @@ func (c *Adapter) requestTry(reqFn func() (*http.Request, error)) (resp *http.Re
 		if err == nil && resp != nil && resp.StatusCode != 429 {
 			return
 		}
-		log.Printf("request retry %d of %d: ", i+1, c.RetryLimit)
+		fmt.Printf("request retry %d of %d: ", i+1, c.RetryLimit)
 		time.Sleep(c.RetryDelay)
 	}
-	log.Println("request tried out", err)
+	fmt.Println("request tried out", err)
 	return
 }
 
 func (c *Adapter) Propfind(path string, depth string) (result PropfindSome, code int, err error) {
-	log.Println("Client.reqPropfind(): ", path, depth)
-
 	resp, err := c.requestTry(func() (*http.Request, error) {
 		reqBody := strings.NewReader(
 			"<d:propfind xmlns:d='DAV:'>" +
@@ -123,7 +120,6 @@ func (c *Adapter) Propfind(path string, depth string) (result PropfindSome, code
 		})
 	})
 	if err != nil {
-		fmt.Println("2")
 		return
 	}
 	code = resp.StatusCode
@@ -132,12 +128,7 @@ func (c *Adapter) Propfind(path string, depth string) (result PropfindSome, code
 		return
 	}
 	bytes, err := ioutil.ReadAll(resp.Body)
-	//	log.Println("  response: ", string(bytes))
-
 	err = xml.Unmarshal(bytes, &result)
-	if err != nil {
-		fmt.Println("3")
-	}
 	return
 }
 
