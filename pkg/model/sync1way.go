@@ -15,7 +15,7 @@ type Sync1WayOpt struct {
 	IgnoreExisting bool
 	IndirectUpload bool
 	AllowDelete    bool
-	UploadThreads  uint
+	WriteThreads   uint
 }
 
 type Sync1Way struct {
@@ -36,8 +36,8 @@ type Sync1Way struct {
 }
 
 func NewSync1Way(src, dst client.Client, opt Sync1WayOpt) *Sync1Way {
-	if opt.UploadThreads < 1 {
-		opt.UploadThreads = 1
+	if opt.WriteThreads < 1 {
+		opt.WriteThreads = 1
 	}
 	return &Sync1Way{
 		src: src,
@@ -138,16 +138,52 @@ func (s *Sync1Way) makeDirs(errors chan<- error) {
 
 func (s *Sync1Way) writeFiles(errors chan<- error) {
 	log.Println("Writing files...")
+	if len(s.addPaths) == 0 {
+		log.Println("  nothing to write")
+		return
+	}
 
-	for _, path := range s.addPaths {
-		res := s.srcResources[path]
-		if !res.IsDir {
-			err := s.writeFile(path, res)
-			if err != nil {
-				errors <- err
+	sortedPaths := make([]string, len(s.addPaths))
+	copy(sortedPaths, s.addPaths)
+	sort.Slice(sortedPaths, func(i, j int) bool {
+		return sortedPaths[i] < sortedPaths[j]
+	})
+
+	paths := make(chan string)
+	group := sync.WaitGroup{}
+
+	thread := func(id uint) {
+		log.Printf("%d Write thread started\n", id)
+		for {
+			select {
+			case path, ok := <-paths:
+				if !ok {
+					log.Printf("%d Write thread exited\n", id)
+					group.Done()
+					return
+				}
+				if res, exists := s.srcResources[path]; exists && !res.IsDir {
+					log.Printf("%d Write thread writing '%s'\n", id, path)
+					err := s.writeFile(path, res)
+					if err != nil {
+						log.Printf("%d Write thread error '%v'\n", id, err)
+						errors <- err
+					}
+				}
 			}
 		}
 	}
+
+	for i := uint(0); i < s.opt.WriteThreads; i++ {
+		group.Add(1)
+		go thread(i)
+	}
+	for _, path := range sortedPaths {
+		paths <- path
+	}
+	close(paths)
+
+	group.Wait()
 }
 
 func (s *Sync1Way) writeFile(path string, res client.Resource) error {

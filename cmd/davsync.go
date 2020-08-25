@@ -102,6 +102,7 @@ func main() {
 		IndirectUpload: true,
 		IgnoreExisting: true,
 		AllowDelete:    false,
+		WriteThreads:   4,
 	})
 
 	errors := make(chan error)
