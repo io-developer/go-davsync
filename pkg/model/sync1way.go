@@ -3,6 +3,9 @@ package model
 import (
 	"fmt"
 	"log"
+	"regexp"
+	"sort"
+	"sync"
 	"time"
 
 	"github.com/io-developer/go-davsync/pkg/client"
@@ -12,6 +15,7 @@ type Sync1WayOpt struct {
 	IgnoreExisting bool
 	IndirectUpload bool
 	AllowDelete    bool
+	UploadThreads  uint
 }
 
 type Sync1Way struct {
@@ -32,6 +36,9 @@ type Sync1Way struct {
 }
 
 func NewSync1Way(src, dst client.Client, opt Sync1WayOpt) *Sync1Way {
+	if opt.UploadThreads < 1 {
+		opt.UploadThreads = 1
+	}
 	return &Sync1Way{
 		src: src,
 		dst: dst,
@@ -39,54 +46,68 @@ func NewSync1Way(src, dst client.Client, opt Sync1WayOpt) *Sync1Way {
 	}
 }
 
-func (s *Sync1Way) Sync() error {
-	err := s.readTrees()
-	if err != nil {
-		return err
-	}
+func (s *Sync1Way) Sync(errors chan<- error) {
+	s.readTrees(errors)
+	s.logTrees()
+
 	s.diff()
-	err = s.makeDirs()
-	if err != nil {
-		return err
-	}
-	err = s.writeFiles()
-	if err != nil {
-		return err
-	}
-	return nil
+	s.logDiff()
+
+	s.makeDirs(errors)
+	s.writeFiles(errors)
 }
 
-func (s *Sync1Way) readTrees() error {
-	var err error
-
-	s.srcPaths, s.srcResources, err = s.src.ReadTree()
-	if err != nil {
-		return err
-	}
-	logTree(s.srcPaths, s.srcResources)
-
-	s.dstPaths, s.dstNodes, err = s.dst.ReadTree()
-	if err != nil {
-		return err
-	}
-	logTree(s.dstPaths, s.dstNodes)
-
-	return err
+func (s *Sync1Way) readTrees(errors chan<- error) {
+	group := sync.WaitGroup{}
+	group.Add(2)
+	go func() {
+		var err error
+		s.srcPaths, s.srcResources, err = s.src.ReadTree()
+		if err != nil {
+			errors <- err
+		}
+		group.Done()
+	}()
+	go func() {
+		var err error
+		s.dstPaths, s.dstNodes, err = s.dst.ReadTree()
+		if err != nil {
+			errors <- err
+		}
+		group.Done()
+	}()
+	group.Wait()
 }
 
-func logTree(paths []string, nodes map[string]client.Resource) {
-	for _, path := range paths {
+func (s *Sync1Way) logTrees() {
+	log.Println()
+	log.Println("Source paths:")
+	for _, path := range s.srcPaths {
 		log.Println(path)
 	}
-	/*
-		for path, node := range nodes {
-			log.Printf("\n%s\n%#v\n\n", path, node)
-		}
-	*/
+	log.Println()
+
+	log.Println()
+	log.Println("Destination paths:")
+	for _, path := range s.dstPaths {
+		log.Println(path)
+	}
+	log.Println()
 }
 
 func (s *Sync1Way) diff() {
-	s.bothPaths, s.addPaths, s.delPaths = compareNodes(s.srcResources, s.dstNodes)
+	from := []string{}
+	for path := range s.srcResources {
+		from = append(from, path)
+	}
+	to := []string{}
+	for path := range s.dstNodes {
+		to = append(to, path)
+	}
+	s.bothPaths, s.addPaths, s.delPaths = diff(from, to)
+}
+
+func (s *Sync1Way) logDiff() {
 	for _, path := range s.bothPaths {
 		log.Println("BOTH", path)
 	}
@@ -98,49 +119,45 @@ func (s *Sync1Way) diff() {
 	}
 }
 
-func (s *Sync1Way) makeDirs() error {
-	for _, path := range s.addPaths {
-		node := s.srcResources[path]
-		if node.IsDir {
-			log.Println("MKDIR", path)
-			err := s.dst.MakeDir(path, true)
-			if err != nil {
-				return err
-			}
+func (s *Sync1Way) makeDirs(errors chan<- error) {
+	log.Println("Making dirs...")
+
+	bothPathDirs := getSortedDirs(s.bothPaths)
+	addPathDirs := getSortedDirs(s.addPaths)
+	_, addDirs, _ := diff(addPathDirs, bothPathDirs)
+	addDirs = getSortedDirs(addDirs)
+
+	for _, path := range addDirs {
+		log.Println("  make dir", path)
+		err := s.dst.MakeDir(path, true)
+		if err != nil {
+			errors <- err
 		}
 	}
-	return nil
 }
 
-func (s *Sync1Way) writeFiles() error {
+func (s *Sync1Way) writeFiles(errors chan<- error) {
+	log.Println("Writing files...")
+
 	for _, path := range s.addPaths {
 		res := s.srcResources[path]
 		if !res.IsDir {
 			err := s.writeFile(path, res)
 			if err != nil {
-				return err
+				errors <- err
 			}
 		}
 	}
-	return nil
 }
 
 func (s *Sync1Way) writeFile(path string, res client.Resource) error {
 	log.Println()
-	log.Println("WRITE FILE", path)
+	log.Println("writing", path)
 
 	uploadPath := path
 	if s.opt.IndirectUpload {
-		uploadPath = getUploadPath(path)
-		log.Println("  INDIRECT UPLOAD ", uploadPath)
-	}
-	err := s.dst.MakeDirFor(uploadPath)
-	if err != nil {
-		return err
-	}
-	err = s.dst.MakeDirFor(path)
-	if err != nil {
-		return err
+		uploadPath = s.getUploadPath(path)
+		log.Println("  indirect upload to ", uploadPath)
 	}
 	reader, err := s.src.ReadFile(path)
 	if err != nil {
@@ -153,7 +170,7 @@ func (s *Sync1Way) writeFile(path string, res client.Resource) error {
 		return err
 	}
 	if path != uploadPath {
-		log.Printf("  MOVING %s -> %s\n", uploadPath, path)
+		log.Printf("  moving %s -> %s\n", uploadPath, path)
 		err = s.dst.MoveFile(uploadPath, path)
 		if err != nil {
 			return err
@@ -162,25 +179,55 @@ func (s *Sync1Way) writeFile(path string, res client.Resource) error {
 	return nil
 }
 
-func getUploadPath(src string) string {
-	return fmt.Sprintf("/ucam-%s.bin", time.Now().Format("20060102150405"))
+func (s *Sync1Way) getUploadPath(src string) string {
+	return fmt.Sprintf("/ucam-%d.bin", time.Now().Local().UnixNano())
 }
 
-func compareNodes(from, to map[string]client.Resource) (both, add, del []string) {
+func diff(from, to []string) (both, add, del []string) {
 	both = []string{}
 	add = []string{}
 	del = []string{}
-	for path := range from {
-		if _, exists := to[path]; exists {
+	fromDict := map[string]bool{}
+	for _, path := range from {
+		fromDict[path] = true
+	}
+	toDict := map[string]bool{}
+	for _, path := range to {
+		toDict[path] = true
+	}
+	for _, path := range from {
+		if _, exists := toDict[path]; exists {
 			both = append(both, path)
 		} else {
 			add = append(add, path)
 		}
 	}
-	for path := range to {
-		if _, exists := from[path]; !exists {
+	for _, path := range to {
+		if _, exists := fromDict[path]; !exists {
 			del = append(del, path)
 		}
 	}
 	return
+}
+
+func getSortedDirs(paths []string) []string {
+	re := regexp.MustCompile("^.*/")
+	dict := map[string]string{}
+	for _, p := range paths {
+		fmt.Println(p)
+		dir := re.FindString(p)
+		fmt.Println("matched dir", dir)
+
+		if dir != "" {
+			dict[dir] = dir
+		}
+	}
+	sorted := []string{}
+	for p := range dict {
+		sorted = append(sorted, p)
+	}
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i] < sorted[j]
+	})
+	return sorted
 }

@@ -104,10 +104,23 @@ func main() {
 		AllowDelete:    false,
 	})
 
-	err := sync.Sync()
-	if err != nil {
-		log.Panicln("sync Sync()", err)
-	}
+	errors := make(chan error)
+	go listenErrors(errors)
+
+	sync.Sync(errors)
 
 	log.Println("\n\nDone.")
+}
+
+func listenErrors(errors <-chan error) {
+	log.Println("Listening for errors...")
+	for {
+		select {
+		case err, ok := <-errors:
+			if !ok {
+				return
+			}
+			log.Println("!!! ERROR", err)
+		}
+	}
 }
