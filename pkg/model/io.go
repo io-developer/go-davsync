@@ -1,8 +1,8 @@
 package model
 
 import (
+	"fmt"
 	"io"
-	"log"
 	"time"
 )
 
@@ -15,6 +15,7 @@ type ReadProgress struct {
 	bytesTotal  int64
 	bytesRead   int64
 	isComplete  bool
+	logFn       func(string)
 	logLastTime time.Time
 }
 
@@ -24,6 +25,7 @@ func NewReadProgress(r io.ReadCloser, len int64) *ReadProgress {
 		bytesTotal:  len,
 		bytesRead:   0,
 		LogInterval: 2 * time.Second,
+		logFn:       nil,
 		logLastTime: time.Now(),
 	}
 }
@@ -58,16 +60,23 @@ func (r *ReadProgress) Read(p []byte) (n int, err error) {
 	return
 }
 
+func (r *ReadProgress) SetLogFn(f func(string)) {
+	r.logFn = f
+}
+
 func (r *ReadProgress) Log(force bool) {
+	if r.logFn == nil {
+		return
+	}
 	isTime := time.Now().Sub(r.logLastTime) >= r.LogInterval
 	if force || isTime {
 		r.logLastTime = time.Now()
-		log.Printf(
-			"  %.2f%% (%d of %d)\n",
+		r.logFn(fmt.Sprintf(
+			"%.2f%% (%d of %d)",
 			100*r.GetProgress(),
 			r.bytesRead,
 			r.bytesTotal,
-		)
+		))
 	}
 }
 

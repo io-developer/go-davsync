@@ -51,10 +51,12 @@ func (s *Sync1Way) Sync(errors chan<- error) {
 	s.logTrees()
 
 	s.diff()
-	s.logDiff()
-
 	s.makeDirs(errors)
 	s.writeFiles(errors)
+}
+
+func (s *Sync1Way) log(msg string) {
+	log.Printf("Sync: %s\n", msg)
 }
 
 func (s *Sync1Way) readTrees(errors chan<- error) {
@@ -80,22 +82,24 @@ func (s *Sync1Way) readTrees(errors chan<- error) {
 }
 
 func (s *Sync1Way) logTrees() {
-	log.Println()
-	log.Println("Source paths:")
+	s.log("")
+	s.log("Source paths:")
 	for _, path := range s.srcPaths {
-		log.Println(path)
+		s.log(path)
 	}
-	log.Println()
+	s.log("")
 
-	log.Println()
-	log.Println("Destination paths:")
+	s.log("")
+	s.log("Destination paths:")
 	for _, path := range s.dstPaths {
-		log.Println(path)
+		s.log(path)
 	}
-	log.Println()
+	s.log("")
 }
 
 func (s *Sync1Way) diff() {
+	s.log("Comparing trees...")
+
 	from := []string{}
 	for path := range s.srcResources {
 		from = append(from, path)
@@ -105,22 +109,21 @@ func (s *Sync1Way) diff() {
 		to = append(to, path)
 	}
 	s.bothPaths, s.addPaths, s.delPaths = diff(from, to)
-}
 
-func (s *Sync1Way) logDiff() {
+	s.log("Tree diff:")
 	for _, path := range s.bothPaths {
-		log.Println("BOTH", path)
+		s.log(fmt.Sprintf("BOTH %s", path))
 	}
 	for _, path := range s.addPaths {
-		log.Println(" ADD", path)
+		s.log(fmt.Sprintf("ADD %s", path))
 	}
 	for _, path := range s.delPaths {
-		log.Println(" DEL", path)
+		s.log(fmt.Sprintf("DEL %s", path))
 	}
 }
 
 func (s *Sync1Way) makeDirs(errors chan<- error) {
-	log.Println("Making dirs...")
+	s.log("Making dirs...")
 
 	bothPathDirs := getSortedDirs(s.bothPaths)
 	addPathDirs := getSortedDirs(s.addPaths)
@@ -128,7 +131,8 @@ func (s *Sync1Way) makeDirs(errors chan<- error) {
 	addDirs = getSortedDirs(addDirs)
 
 	for _, path := range addDirs {
-		log.Println("  make dir", path)
+		s.log(fmt.Sprintf("  make dir %s", path))
+
 		err := s.dst.MakeDir(path, true)
 		if err != nil {
 			errors <- err
@@ -137,9 +141,9 @@ func (s *Sync1Way) makeDirs(errors chan<- error) {
 }
 
 func (s *Sync1Way) writeFiles(errors chan<- error) {
-	log.Println("Writing files...")
+	s.log("Writing files...")
 	if len(s.addPaths) == 0 {
-		log.Println("  nothing to write")
+		s.log("Nothing to write")
 		return
 	}
 
@@ -153,22 +157,31 @@ func (s *Sync1Way) writeFiles(errors chan<- error) {
 	group := sync.WaitGroup{}
 
 	thread := func(id uint) {
-		log.Printf("%d Write thread started\n", id)
+		curPath := "-"
+		logThread := func(msg string) {
+			s.log(fmt.Sprintf("[wthread %d] '%s': %s", id, curPath, msg))
+		}
+		logThread("Thread started")
+
 		for {
 			select {
 			case path, ok := <-paths:
 				if !ok {
-					log.Printf("%d Write thread exited\n", id)
+					logThread("Thread exited")
 					group.Done()
 					return
 				}
 				if res, exists := s.srcResources[path]; exists && !res.IsDir {
-					log.Printf("%d Write thread writing '%s'\n", id, path)
-					err := s.writeFile(path, res)
+					curPath = path
+					logThread("Start..")
+					err := s.writeFile(path, res, logThread)
 					if err != nil {
-						log.Printf("%d Write thread error '%v'\n", id, err)
+						logThread(fmt.Sprintf("ERROR '%v'", err))
 						errors <- err
+					} else {
+						logThread("Complete")
 					}
+					curPath = "-"
 				}
 			}
 		}
@@ -186,27 +199,25 @@ func (s *Sync1Way) writeFiles(errors chan<- error) {
 	group.Wait()
 }
 
-func (s *Sync1Way) writeFile(path string, res client.Resource) error {
-	log.Println()
-	log.Println("writing", path)
-
+func (s *Sync1Way) writeFile(path string, res client.Resource, logFn func(string)) error {
 	uploadPath := path
 	if s.opt.IndirectUpload {
 		uploadPath = s.getUploadPath(path)
-		log.Println("  indirect upload to ", uploadPath)
+		logFn(fmt.Sprintf("Indirect upload to '%s'", uploadPath))
 	}
 	reader, err := s.src.ReadFile(path)
 	if err != nil {
 		return err
 	}
 	readProgress := NewReadProgress(reader, res.Size)
+	readProgress.SetLogFn(logFn)
 	err = s.dst.WriteFile(uploadPath, readProgress)
 	if err != nil {
 		reader.Close()
 		return err
 	}
 	if path != uploadPath {
-		log.Printf("  moving %s -> %s\n", uploadPath, path)
+		logFn(fmt.Sprintf("Moving %s", uploadPath))
 		err = s.dst.MoveFile(uploadPath, path)
 		if err != nil {
 			return err
@@ -250,10 +261,7 @@ func getSortedDirs(paths []string) []string {
 	re := regexp.MustCompile("^.*/")
 	dict := map[string]string{}
 	for _, p := range paths {
-		fmt.Println(p)
 		dir := re.FindString(p)
-		fmt.Println("matched dir", dir)
-
 		if dir != "" {
 			dict[dir] = dir
 		}
