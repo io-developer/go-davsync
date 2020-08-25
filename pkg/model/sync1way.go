@@ -146,7 +146,7 @@ func (s *Sync1Way) writeFiles(errors chan<- error) {
 	logMain := func(msg string) {
 		progress := 100.0
 		if total > 0 {
-			progress = float64(100.0 * handled / total)
+			progress = 100.0 * float64(handled) / float64(total)
 		}
 		s.log(fmt.Sprintf("%.2f%% (%d/%d): %s", progress, handled, total, msg))
 	}
