@@ -141,9 +141,19 @@ func (s *Sync1Way) makeDirs(errors chan<- error) {
 }
 
 func (s *Sync1Way) writeFiles(errors chan<- error) {
-	s.log("Writing files...")
+	total := len(s.addPaths)
+	handled := 0
+	logMain := func(msg string) {
+		progress := 100.0
+		if total > 0 {
+			progress = float64(100.0 * handled / total)
+		}
+		s.log(fmt.Sprintf("%.2f%% (%d/%d): %s", progress, handled, total, msg))
+	}
+
+	logMain("Writing files...")
 	if len(s.addPaths) == 0 {
-		s.log("Nothing to write")
+		logMain("Nothing to write")
 		return
 	}
 
@@ -159,7 +169,7 @@ func (s *Sync1Way) writeFiles(errors chan<- error) {
 	thread := func(id uint) {
 		curPath := "-"
 		logThread := func(msg string) {
-			s.log(fmt.Sprintf("[wthread %d] '%s': %s", id, curPath, msg))
+			logMain(fmt.Sprintf("[wthread %d] '%s': %s", id, curPath, msg))
 		}
 		logThread("Thread started")
 
@@ -175,6 +185,7 @@ func (s *Sync1Way) writeFiles(errors chan<- error) {
 					curPath = path
 					logThread("Start..")
 					err := s.writeFile(path, res, logThread)
+					handled++
 					if err != nil {
 						logThread(fmt.Sprintf("ERROR '%v'", err))
 						errors <- err
@@ -197,6 +208,8 @@ func (s *Sync1Way) writeFiles(errors chan<- error) {
 	close(paths)
 
 	group.Wait()
+
+	logMain("Write files complete")
 }
 
 func (s *Sync1Way) writeFile(path string, res client.Resource, logFn func(string)) error {
