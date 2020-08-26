@@ -141,10 +141,10 @@ func (s *Sync1Way) makeDirs(errors chan<- error) {
 }
 
 func (s *Sync1Way) writeFiles(errors chan<- error) {
-	total := len(s.addPaths)
+	total := 0
 	handled := 0
 	logMain := func(msg string) {
-		progress := 100.0
+		progress := 0.0
 		if total > 0 {
 			progress = 100.0 * float64(handled) / float64(total)
 		}
@@ -157,11 +157,16 @@ func (s *Sync1Way) writeFiles(errors chan<- error) {
 		return
 	}
 
-	sortedPaths := make([]string, len(s.addPaths))
-	copy(sortedPaths, s.addPaths)
-	sort.Slice(sortedPaths, func(i, j int) bool {
-		return sortedPaths[i] < sortedPaths[j]
+	preparedFilePaths := []string{}
+	for _, path := range s.addPaths {
+		if res, exists := s.srcResources[path]; exists && !res.IsDir {
+			preparedFilePaths = append(preparedFilePaths, path)
+		}
+	}
+	sort.Slice(preparedFilePaths, func(i, j int) bool {
+		return preparedFilePaths[i] < preparedFilePaths[j]
 	})
+	total = len(preparedFilePaths)
 
 	paths := make(chan string)
 	group := sync.WaitGroup{}
@@ -202,7 +207,7 @@ func (s *Sync1Way) writeFiles(errors chan<- error) {
 		group.Add(1)
 		go thread(i)
 	}
-	for _, path := range sortedPaths {
+	for _, path := range preparedFilePaths {
 		paths <- path
 	}
 	close(paths)
