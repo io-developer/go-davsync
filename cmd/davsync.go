@@ -64,14 +64,14 @@ func createSrcClient(args Args) *fs.Client {
 }
 
 func createDstClient(args Args) client.Client {
-	return createRemoteDavClient(args)
+	return createYadiskClient(args)
 }
 
 func createFsClient(args Args) *fs.Client {
 	return fs.NewClient(args.localPath)
 }
 
-func createRemoteDavClient(args Args) *webdav.Client {
+func createDavClient(args Args) *webdav.Client {
 	return webdav.NewClient(webdav.Options{
 		BaseDir:       args.remotePath,
 		DavUri:        args.secrets.BaseURI,
@@ -82,14 +82,19 @@ func createRemoteDavClient(args Args) *webdav.Client {
 	})
 }
 
-func createRemoteYaClient(args Args) *yadiskrest.Client {
-	opt := yadiskrest.ClientOpt{
+func createYadiskRestClient(args Args) *yadiskrest.Client {
+	return yadiskrest.NewClient(yadiskrest.Options{
+		BaseDir:   args.remotePath,
 		ApiUri:    "https://cloud-api.yandex.net/v1/disk",
 		AuthToken: args.secrets.Token,
-	}
-	client := yadiskrest.NewClient(opt)
-	client.BaseDir = args.remotePath
-	return client
+	})
+}
+
+func createYadiskClient(args Args) client.Client {
+	yadisk := createYadiskRestClient(args)
+	dav := createDavClient(args)
+	dav.SetTree(yadisk)
+	return dav
 }
 
 func main() {

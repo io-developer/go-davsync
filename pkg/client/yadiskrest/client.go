@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -17,11 +16,6 @@ import (
 	"github.com/io-developer/go-davsync/pkg/client"
 )
 
-type ClientOpt struct {
-	ApiUri    string
-	AuthToken string
-}
-
 type Client struct {
 	//	model.Client
 
@@ -29,7 +23,7 @@ type Client struct {
 	RetryLimit int
 	RetryDelay time.Duration
 
-	opt         ClientOpt
+	opt         Options
 	httpClient  http.Client
 	baseHeaders map[string]string
 
@@ -39,7 +33,7 @@ type Client struct {
 	treeItemPaths   []string
 }
 
-func NewClient(opt ClientOpt) *Client {
+func NewClient(opt Options) *Client {
 	return &Client{
 		RetryLimit: 3,
 		RetryDelay: 1 * time.Second,
@@ -51,18 +45,6 @@ func NewClient(opt ClientOpt) *Client {
 			"Connection": "keep-alive",
 		},
 	}
-}
-
-func (c *Client) getBaseDir() string {
-	return filepath.Join("/", strings.TrimRight(c.BaseDir, "/"))
-}
-
-func (c *Client) toRelPath(absPath string) string {
-	return client.PathRel(absPath, c.BaseDir)
-}
-
-func (c *Client) toAbsPath(relPath string) string {
-	return client.PathAbs(relPath, c.BaseDir)
 }
 
 func (c *Client) ReadParents() (absPaths []string, items map[string]client.Resource, err error) {
@@ -140,7 +122,7 @@ func (c *Client) makeDirRecursive(path string) error {
 
 func (c *Client) makeDir(path string) (code int, err error) {
 	req, err := c.createRequest("PUT", "/resources", url.Values{
-		"path": []string{c.toAbsPath(path)},
+		"path": []string{c.opt.toAbsPath(path)},
 	}, nil)
 	if err != nil {
 		return
@@ -188,7 +170,7 @@ func (c *Client) ReadFile(path string) (reader io.ReadCloser, err error) {
 
 func (c *Client) WriteFile(path string, content io.ReadCloser) error {
 	resp, err := c.request("GET", "/resources/upload", url.Values{
-		"path":      []string{c.toAbsPath(path)},
+		"path":      []string{c.opt.toAbsPath(path)},
 		"overwrite": []string{"true"},
 	})
 	if err != nil {
@@ -230,8 +212,8 @@ func (c *Client) WriteFile(path string, content io.ReadCloser) error {
 
 func (c *Client) MoveFile(srcPath, dstPath string) error {
 	req, err := c.createRequest("POST", "/resources/move", url.Values{
-		"from":      []string{c.toAbsPath(srcPath)},
-		"path":      []string{c.toAbsPath(dstPath)},
+		"from":      []string{c.opt.toAbsPath(srcPath)},
+		"path":      []string{c.opt.toAbsPath(dstPath)},
 		"overwrite": []string{"true"},
 	}, nil)
 	if err != nil {
@@ -258,32 +240,37 @@ func (c *Client) readTree() error {
 	if err != nil {
 		return err
 	}
+	log.Println("read tree: parsing json...")
 	r := &Resources{}
 	err = json.Unmarshal(bytes, &r)
 	if err != nil {
 		return err
 	}
+	log.Println("read tree: iterating items...")
 	c.treeParents = map[string]Resource{}
 	c.treeParentPaths = []string{}
 	c.treeItems = map[string]Resource{}
 	c.treeItemPaths = []string{}
 	for _, item := range r.Items {
 		absPath := item.GetNormalizedAbsPath()
-		if strings.HasPrefix(absPath, c.getBaseDir()) {
-			path := c.toRelPath(absPath)
+		if strings.HasPrefix(absPath, c.opt.getBaseDir()) {
+			path := c.opt.toRelPath(absPath)
 			c.treeItems[path] = item
 			c.treeItemPaths = append(c.treeItemPaths, path)
-		} else if strings.HasPrefix(c.getBaseDir(), absPath) {
+		} else if strings.HasPrefix(c.opt.getBaseDir(), absPath) {
 			c.treeParents[absPath] = item
 			c.treeParentPaths = append(c.treeParentPaths, absPath)
 		}
 	}
+	log.Println("read tree: sorting parent paths...")
 	sort.Slice(c.treeParentPaths, func(i, j int) bool {
 		return c.treeParentPaths[i] < c.treeParentPaths[j]
 	})
+	log.Println("read tree: sorting item paths...")
 	sort.Slice(c.treeItemPaths, func(i, j int) bool {
 		return c.treeItemPaths[i] < c.treeItemPaths[j]
 	})
+	log.Println("read tree: complete")
 	return nil
 }
 

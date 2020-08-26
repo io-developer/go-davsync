@@ -9,15 +9,6 @@ import (
 	"github.com/io-developer/go-davsync/pkg/client"
 )
 
-type ClientOpt struct {
-	BaseDir       string
-	DavUri        string
-	AuthToken     string
-	AuthTokenType string
-	AuthUser      string
-	AuthPass      string
-}
-
 type Client struct {
 	client.Client
 
@@ -36,13 +27,9 @@ func NewClient(opt Options) *Client {
 	}
 }
 
-func (c *Client) GetTreeReader() client.Tree {
-	return c.tree
-}
-
-func (c *Client) SetTreeReader(t client.Tree) error {
+func (c *Client) SetTree(t client.Tree) error {
 	if t == nil {
-		return fmt.Errorf("Expected non-nil TreeReader")
+		return fmt.Errorf("Unexpected non-nil Tree")
 	}
 	c.tree = t
 	return nil
