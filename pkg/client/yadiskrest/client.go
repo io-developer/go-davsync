@@ -246,32 +246,72 @@ func (c *Client) readTree() error {
 	if err != nil {
 		return err
 	}
-	log.Println("read tree: iterating items...")
+
 	c.treeParents = map[string]Resource{}
 	c.treeParentPaths = []string{}
 	c.treeItems = map[string]Resource{}
 	c.treeItemPaths = []string{}
+
+	log.Println("read tree: filling tree and parents...")
 	for _, item := range r.Items {
-		absPath := item.GetNormalizedAbsPath()
-		if strings.HasPrefix(absPath, c.opt.getBaseDir()) {
-			path := c.opt.toRelPath(absPath)
-			c.treeItems[path] = item
-			c.treeItemPaths = append(c.treeItemPaths, path)
-		} else if strings.HasPrefix(c.opt.getBaseDir(), absPath) {
-			c.treeParents[absPath] = item
-			c.treeParentPaths = append(c.treeParentPaths, absPath)
-		}
+		c.appendTree(item)
 	}
+
 	log.Println("read tree: sorting parent paths...")
 	sort.Slice(c.treeParentPaths, func(i, j int) bool {
 		return c.treeParentPaths[i] < c.treeParentPaths[j]
 	})
+
 	log.Println("read tree: sorting item paths...")
 	sort.Slice(c.treeItemPaths, func(i, j int) bool {
 		return c.treeItemPaths[i] < c.treeItemPaths[j]
 	})
+
 	log.Println("read tree: complete")
 	return nil
+}
+
+func (c *Client) appendTree(item Resource) {
+	absPath := item.GetNormalizedAbsPath()
+	if strings.HasPrefix(absPath, c.opt.getBaseDir()) {
+		path := c.opt.toRelPath(absPath)
+		c.treeItems[path] = item
+		c.treeItemPaths = append(c.treeItemPaths, path)
+
+		// add missing dirs
+		for _, dirPath := range client.PathParents(path) {
+			if _, exists := c.treeItems[dirPath]; exists {
+				continue
+			}
+			log.Println("read tree: appending dir", dirPath)
+			c.treeItems[dirPath] = c.createDirResource(c.opt.toAbsPath(dirPath))
+			c.treeItemPaths = append(c.treeItemPaths, dirPath)
+		}
+	}
+
+	// add missing parents
+	for _, parentAbsPath := range client.PathParents(absPath) {
+		if _, exists := c.treeParents[parentAbsPath]; exists {
+			continue
+		}
+		if !strings.HasPrefix(c.opt.getBaseDir(), parentAbsPath) {
+			continue
+		}
+		if parentAbsPath == absPath {
+			c.treeParents[parentAbsPath] = item
+			continue
+		}
+		log.Println("read tree: appending parent", parentAbsPath)
+		c.treeParents[parentAbsPath] = c.createDirResource(parentAbsPath)
+		c.treeParentPaths = append(c.treeParentPaths, parentAbsPath)
+	}
+}
+
+func (c *Client) createDirResource(absPath string) Resource {
+	return Resource{
+		Path: "disk:" + strings.TrimPrefix(absPath, "disk:"),
+		Type: "dir",
+	}
 }
 
 // http impl

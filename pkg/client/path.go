@@ -32,3 +32,16 @@ func PathAbs(relPath, baseDir string) string {
 	path := filepath.Join(baseDir, relPath)
 	return PathNormalize(path, isDir)
 }
+
+func PathParents(path string) []string {
+	norm := filepath.Join("/", strings.Trim(path, "/"))
+	parents := []string{}
+	parent := ""
+	parts := strings.Split(norm, "/")
+	for i := 0; i < len(parts)-1; i++ {
+		part := parts[i]
+		parent += part + "/"
+		parents = append(parents, parent)
+	}
+	return parents
+}
