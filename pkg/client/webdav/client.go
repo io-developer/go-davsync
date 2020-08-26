@@ -23,7 +23,7 @@ type Client struct {
 
 	opt         Options
 	adapter     *Adapter
-	fileTree    *FileTree
+	tree        client.Tree
 	createdDirs map[string]string
 }
 
@@ -31,32 +31,29 @@ func NewClient(opt Options) *Client {
 	return &Client{
 		opt:         opt,
 		adapter:     NewAdapter(opt),
-		fileTree:    NewFileTree(opt),
+		tree:        NewTree(opt),
 		createdDirs: make(map[string]string),
 	}
 }
 
-func (c *Client) ReadTree() (paths []string, resources map[string]client.Resource, err error) {
-	_, err = c.fileTree.GetParents()
-	if err != nil {
-		return
+func (c *Client) GetTreeReader() client.Tree {
+	return c.tree
+}
+
+func (c *Client) SetTreeReader(t client.Tree) error {
+	if t == nil {
+		return fmt.Errorf("Expected non-nil TreeReader")
 	}
-	paths, propfinds, err := c.fileTree.GetItems()
-	if err != nil {
-		return
-	}
-	resources = map[string]client.Resource{}
-	for path, propfind := range propfinds {
-		resources[path] = client.Resource{
-			Path:     path,
-			AbsPath:  propfind.GetNormalizedAbsPath(),
-			Name:     propfind.DisplayName,
-			IsDir:    propfind.IsCollection(),
-			Size:     propfind.ContentLength,
-			UserData: propfind,
-		}
-	}
-	return
+	c.tree = t
+	return nil
+}
+
+func (c *Client) ReadTreeParents() (absPaths []string, items map[string]client.Resource, err error) {
+	return c.tree.ReadParents()
+}
+
+func (c *Client) ReadTree() (paths []string, items map[string]client.Resource, err error) {
+	return c.tree.ReadTree()
 }
 
 func (c *Client) MakeDir(path string, recursive bool) error {
@@ -97,7 +94,7 @@ func (c *Client) makeDirRecursive(absPath string) error {
 
 func (c *Client) makeDir(absPath string) (code int, err error) {
 	absPath = client.PathNormalize(absPath, true)
-	parents, err := c.fileTree.GetParents()
+	_, parents, err := c.tree.ReadParents()
 	if _, exists := parents[absPath]; exists {
 		return 200, nil
 	}
@@ -105,11 +102,11 @@ func (c *Client) makeDir(absPath string) (code int, err error) {
 		return 200, nil
 	}
 	path := c.opt.toRelPath(absPath)
-	_, items, err := c.fileTree.GetItems()
+	_, items, err := c.tree.ReadTree()
 	if err != nil {
 		return 0, err
 	}
-	if item, exists := items[path]; exists && item.IsCollection() {
+	if item, exists := items[path]; exists && item.IsDir {
 		return 200, nil
 	}
 	code, err = c.adapter.Mkcol(absPath)

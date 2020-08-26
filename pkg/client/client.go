@@ -3,7 +3,7 @@ package client
 import "io"
 
 type Client interface {
-	ReadTree() (paths []string, nodes map[string]Resource, err error)
+	Tree
 
 	MakeDir(path string, recursive bool) error
 	MakeDirFor(filePath string) error

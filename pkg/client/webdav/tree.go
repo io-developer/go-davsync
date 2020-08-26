@@ -3,12 +3,13 @@ package webdav
 import (
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 
 	"github.com/io-developer/go-davsync/pkg/client"
 )
 
-type FileTree struct {
+type Tree struct {
 	opt       Options
 	adapter   *Adapter
 	parents   map[string]Propfind
@@ -16,24 +17,42 @@ type FileTree struct {
 	itemPaths []string
 }
 
-func NewFileTree(opt Options) *FileTree {
-	return &FileTree{
+func NewTree(opt Options) *Tree {
+	return &Tree{
 		opt:     opt,
 		adapter: NewAdapter(opt),
 	}
 }
 
-func (c *FileTree) GetParents() (map[string]Propfind, error) {
-	var err error
-	if c.parents == nil {
-		c.parents = make(map[string]Propfind)
-		err = c.readParents()
+func (t *Tree) ReadParents() (absPaths []string, resources map[string]client.Resource, err error) {
+	if t.parents == nil {
+		t.parents = make(map[string]Propfind)
+		err = t.readParents()
 	}
-	return c.parents, err
+	if err != nil {
+		return
+	}
+	absPaths = []string{}
+	resources = map[string]client.Resource{}
+	for path, propfind := range t.parents {
+		absPaths = append(absPaths, path)
+		resources[path] = client.Resource{
+			Path:     path,
+			AbsPath:  propfind.GetNormalizedAbsPath(),
+			Name:     propfind.DisplayName,
+			IsDir:    propfind.IsCollection(),
+			Size:     propfind.ContentLength,
+			UserData: propfind,
+		}
+	}
+	sort.Slice(absPaths, func(i, j int) bool {
+		return absPaths[i] < absPaths[j]
+	})
+	return
 }
 
-func (c *FileTree) readParents() error {
-	parts := strings.Split(strings.Trim(c.opt.BaseDir, "/"), "/")
+func (t *Tree) readParents() error {
+	parts := strings.Split(strings.Trim(t.opt.BaseDir, "/"), "/")
 	total := len(parts)
 	if total < 1 {
 		return nil
@@ -41,7 +60,7 @@ func (c *FileTree) readParents() error {
 	path := ""
 	for _, part := range parts {
 		path += "/" + part
-		some, code, err := c.adapter.Propfind(path, "0")
+		some, code, err := t.adapter.Propfind(path, "0")
 		if code == 404 {
 			return nil
 		}
@@ -52,42 +71,65 @@ func (c *FileTree) readParents() error {
 			return err
 		}
 		normPath := client.PathNormalize(path, true)
-		c.parents[normPath] = some.Propfinds[0]
+		t.parents[normPath] = some.Propfinds[0]
 	}
 	return nil
 }
 
-func (c *FileTree) GetItems() (paths []string, items map[string]Propfind, err error) {
-	if c.items == nil {
-		reader := newFileTreeReader(c.opt, 4)
-		err = reader.ReadDir("/")
-		c.itemPaths, c.items = reader.parsedPaths, reader.parsedItems
+func (t *Tree) ReadTree() (paths []string, resources map[string]client.Resource, err error) {
+	// caching parent on first reading
+	_, _, err = t.ReadParents()
+	if err != nil {
+		return
 	}
-	return c.itemPaths, c.items, err
+	if t.items == nil {
+		reader := newTreeReader(t.opt, 4)
+		err = reader.ReadDir("/")
+		t.itemPaths, t.items = reader.parsedPaths, reader.parsedItems
+		sort.Slice(t.itemPaths, func(i, j int) bool {
+			return t.itemPaths[i] < t.itemPaths[j]
+		})
+	}
+	if err != nil {
+		return
+	}
+	paths = t.itemPaths
+	resources = map[string]client.Resource{}
+	for path, propfind := range t.items {
+		resources[path] = client.Resource{
+			Path:     path,
+			AbsPath:  propfind.GetNormalizedAbsPath(),
+			Name:     propfind.DisplayName,
+			IsDir:    propfind.IsCollection(),
+			Size:     propfind.ContentLength,
+			UserData: propfind,
+		}
+	}
+	return
 }
 
-type fileTreeReader struct {
+type treeReader struct {
 	opt         Options
 	numThreads  int
 	parsedItems map[string]Propfind
 	parsedPaths []string
 }
 
-func newFileTreeReader(opt Options, numThreads int) *fileTreeReader {
+func newTreeReader(opt Options, numThreads int) *treeReader {
 	if numThreads < 1 {
 		numThreads = 1
 	}
-	return &fileTreeReader{
+	return &treeReader{
 		opt:        opt,
 		numThreads: numThreads,
 	}
 }
 
-func (r *fileTreeReader) log(msg string) {
+func (r *treeReader) log(msg string) {
 	log.Printf("Dav tree: %s\n", msg)
 }
 
-func (r *fileTreeReader) ReadDir(path string) (err error) {
+func (r *treeReader) ReadDir(path string) (err error) {
 	queueCounter := 0
 	logMain := func(msg string) {
 		r.log(fmt.Sprintf("[main, queue=%d]: %s", queueCounter, msg))
@@ -178,7 +220,7 @@ func (r *fileTreeReader) ReadDir(path string) (err error) {
 	return
 }
 
-func (r *fileTreeReader) thread(id int, queue, parsed, completed, errors chan treeMsg) {
+func (r *treeReader) thread(id int, queue, parsed, completed, errors chan treeMsg) {
 	curPath := "-"
 	logThread := func(msg string) {
 		r.log(fmt.Sprintf("[thread %d] '%s': %s", id, curPath, msg))

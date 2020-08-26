@@ -25,6 +25,10 @@ func NewClient(baseDir string) *Client {
 	}
 }
 
+func (c *Client) ReadParents() (absPaths []string, nodes map[string]client.Resource, err error) {
+	return
+}
+
 func (c *Client) ReadTree() (paths []string, nodes map[string]client.Resource, err error) {
 	paths = []string{}
 	nodes = map[string]client.Resource{}

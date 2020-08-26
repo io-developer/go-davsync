@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -28,11 +29,14 @@ type Client struct {
 	RetryLimit int
 	RetryDelay time.Duration
 
-	opt           ClientOpt
-	httpClient    http.Client
-	baseHeaders   map[string]string
-	resources     map[string]Resource
-	resourcePaths []string
+	opt         ClientOpt
+	httpClient  http.Client
+	baseHeaders map[string]string
+
+	treeParents     map[string]Resource
+	treeParentPaths []string
+	treeItems       map[string]Resource
+	treeItemPaths   []string
 }
 
 func NewClient(opt ClientOpt) *Client {
@@ -61,14 +65,34 @@ func (c *Client) toAbsPath(relPath string) string {
 	return client.PathAbs(relPath, c.BaseDir)
 }
 
-func (c *Client) ReadTree() (paths []string, nodes map[string]client.Resource, err error) {
-	items, err := c.GetResources()
+func (c *Client) ReadParents() (absPaths []string, items map[string]client.Resource, err error) {
+	err = c.readTree()
 	if err != nil {
 		return
 	}
-	nodes = map[string]client.Resource{}
-	for path, item := range items {
-		nodes[path] = client.Resource{
+	absPaths = c.treeParentPaths
+	items = map[string]client.Resource{}
+	for absPath, parent := range c.treeParents {
+		items[absPath] = client.Resource{
+			Path:     absPath,
+			AbsPath:  parent.Path,
+			IsDir:    parent.IsDir(),
+			Name:     parent.Name,
+			Size:     parent.Size,
+			UserData: parent,
+		}
+	}
+	return
+}
+
+func (c *Client) ReadTree() (paths []string, items map[string]client.Resource, err error) {
+	err = c.readTree()
+	if err != nil {
+		return
+	}
+	items = map[string]client.Resource{}
+	for path, item := range c.treeItems {
+		items[path] = client.Resource{
 			Path:     path,
 			AbsPath:  item.Path,
 			IsDir:    item.IsDir(),
@@ -77,7 +101,7 @@ func (c *Client) ReadTree() (paths []string, nodes map[string]client.Resource, e
 			UserData: item,
 		}
 	}
-	return c.resourcePaths, nodes, nil
+	return c.treeItemPaths, items, nil
 }
 
 func (c *Client) MakeDir(path string, recursive bool) error {
@@ -133,11 +157,11 @@ func (c *Client) makeDir(path string) (code int, err error) {
 }
 
 func (c *Client) ReadFile(path string) (reader io.ReadCloser, err error) {
-	items, err := c.GetResources()
+	err = c.readTree()
 	if err != nil {
 		return
 	}
-	item, exists := items[path]
+	item, exists := c.treeItems[path]
 	if !exists {
 		err = fmt.Errorf("Resource not found '%s'", path)
 		return
@@ -224,32 +248,43 @@ func (c *Client) MoveFile(srcPath, dstPath string) error {
 	return fmt.Errorf("Unexpected MoveFile (MOVE) code: %d", code)
 }
 
-func (c *Client) GetResources() (map[string]Resource, error) {
-	if c.resources != nil {
-		return c.resources, nil
+func (c *Client) readTree() error {
+	if c.treeItems != nil {
+		return nil
 	}
 	bytes, err := c.requestBytes("GET", "/resources/files", url.Values{
 		"limit": []string{"999999"},
 	})
 	if err != nil {
-		return c.resources, err
+		return err
 	}
 	r := &Resources{}
 	err = json.Unmarshal(bytes, &r)
 	if err != nil {
-		return c.resources, err
+		return err
 	}
-	c.resources = map[string]Resource{}
-	c.resourcePaths = []string{}
+	c.treeParents = map[string]Resource{}
+	c.treeParentPaths = []string{}
+	c.treeItems = map[string]Resource{}
+	c.treeItemPaths = []string{}
 	for _, item := range r.Items {
 		absPath := item.GetNormalizedAbsPath()
 		if strings.HasPrefix(absPath, c.getBaseDir()) {
 			path := c.toRelPath(absPath)
-			c.resources[path] = item
-			c.resourcePaths = append(c.resourcePaths, path)
+			c.treeItems[path] = item
+			c.treeItemPaths = append(c.treeItemPaths, path)
+		} else if strings.HasPrefix(c.getBaseDir(), absPath) {
+			c.treeParents[absPath] = item
+			c.treeParentPaths = append(c.treeParentPaths, absPath)
 		}
 	}
-	return c.resources, nil
+	sort.Slice(c.treeParentPaths, func(i, j int) bool {
+		return c.treeParentPaths[i] < c.treeParentPaths[j]
+	})
+	sort.Slice(c.treeItemPaths, func(i, j int) bool {
+		return c.treeItemPaths[i] < c.treeItemPaths[j]
+	})
+	return nil
 }
 
 // http impl
