@@ -1,7 +1,9 @@
 package model
 
 import (
+	"crypto"
 	"fmt"
+	"hash"
 	"io"
 	"time"
 )
@@ -17,6 +19,8 @@ type ReadProgress struct {
 	isComplete  bool
 	logFn       func(string)
 	logLastTime time.Time
+	md5         hash.Hash
+	sha256      hash.Hash
 }
 
 func NewReadProgress(r io.ReadCloser, len int64) *ReadProgress {
@@ -27,6 +31,8 @@ func NewReadProgress(r io.ReadCloser, len int64) *ReadProgress {
 		LogInterval: 2 * time.Second,
 		logFn:       nil,
 		logLastTime: time.Now(),
+		md5:         crypto.MD5.New(),
+		sha256:      crypto.SHA256.New(),
 	}
 }
 
@@ -45,9 +51,18 @@ func (r *ReadProgress) GetProgress() float64 {
 	return float64(r.bytesRead) / float64(r.bytesTotal)
 }
 
+func (r *ReadProgress) GetHashMd5() string {
+	return fmt.Sprintf("%x", r.md5.Sum(nil))
+}
+
+func (r *ReadProgress) GetHashSha256() string {
+	return fmt.Sprintf("%x", r.sha256.Sum(nil))
+}
+
 func (r *ReadProgress) Read(p []byte) (n int, err error) {
 	n, err = r.reader.Read(p)
 	r.bytesRead += int64(n)
+	r.updateHash(p, n)
 
 	isComplete := r.bytesRead == r.bytesTotal
 	if !isComplete {
@@ -58,6 +73,33 @@ func (r *ReadProgress) Read(p []byte) (n int, err error) {
 	r.isComplete = isComplete
 
 	return
+}
+
+func (r *ReadProgress) updateHash(p []byte, n int) error {
+	if n < 1 {
+		return nil
+	}
+
+	data := make([]byte, n)
+	copy(data, p)
+
+	nMd5, err := r.md5.Write(data)
+	if err != nil {
+		return err
+	}
+	if nMd5 != n {
+		return fmt.Errorf("ReadProgress: n md5 (%d) != n (%d)", nMd5, n)
+	}
+
+	nSha256, err := r.sha256.Write(data)
+	if err != nil {
+		return err
+	}
+	if nMd5 != n {
+		return fmt.Errorf("ReadProgress: n sha256 (%d) != n (%d)", nSha256, n)
+	}
+
+	return nil
 }
 
 func (r *ReadProgress) SetLogFn(f func(string)) {

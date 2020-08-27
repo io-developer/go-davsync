@@ -265,8 +265,13 @@ func (s *Sync1Way) writeFile(path string, res client.Resource, logFn func(string
 	readProgress := NewReadProgress(reader, res.Size)
 	readProgress.SetLogFn(logFn)
 	err = s.dst.WriteFile(uploadPath, readProgress, res.Size)
+	reader.Close()
+
+	logFn(fmt.Sprintf("Read bytes: %d", readProgress.GetBytesRead()))
+	logFn(fmt.Sprintf("Read md5: %s", readProgress.GetHashMd5()))
+	logFn(fmt.Sprintf("Read sha256: %s", readProgress.GetHashSha256()))
+
 	if err != nil {
-		reader.Close()
 		return err
 	}
 	if path != uploadPath {
