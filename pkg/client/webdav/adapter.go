@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -162,13 +164,19 @@ func (c *Adapter) GetFile(path string) (r io.ReadCloser, code int, err error) {
 	return
 }
 
-func (c *Adapter) PutFile(path string, body io.Reader) (code int, err error) {
-	req, err := c.createRequest("PUT", path, body, map[string]string{})
+func (c *Adapter) PutFile(path string, body io.Reader, size int64) (code int, err error) {
+	headers := map[string]string{}
+	if size > 0 {
+		headers["Content-Length"] = strconv.FormatInt(size, 10)
+	}
+	req, err := c.createRequest("PUT", path, body, headers)
 	if err != nil {
 		return
 	}
+	req.Close = true
 	resp, err := c.request(req)
 	if err != nil {
+		log.Printf("Dav adapter: PutFile error '%#v'\n", err)
 		return
 	}
 	code = resp.StatusCode

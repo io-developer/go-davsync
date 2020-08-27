@@ -5,6 +5,7 @@ import (
 	"flag"
 	"io/ioutil"
 	"log"
+	"time"
 
 	"github.com/io-developer/go-davsync/pkg/client"
 	"github.com/io-developer/go-davsync/pkg/client/fs"
@@ -104,10 +105,13 @@ func main() {
 	src := createSrcClient(args)
 	dst := createDstClient(args)
 	sync := model.NewSync1Way(src, dst, model.Sync1WayOpt{
-		IndirectUpload: true,
-		IgnoreExisting: true,
-		AllowDelete:    false,
-		WriteThreads:   4,
+		IndirectUpload:         true,
+		IgnoreExisting:         true,
+		AllowDelete:            false,
+		WriteThreads:           8,
+		WriteRetry:             3,
+		WriteRetryWait:         10 * time.Second,
+		SingleThreadedFileSize: 128 * 1024 * 1024,
 	})
 
 	errors := make(chan error)

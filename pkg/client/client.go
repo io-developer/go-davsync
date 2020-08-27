@@ -9,6 +9,6 @@ type Client interface {
 	MakeDirFor(filePath string) error
 
 	ReadFile(path string) (reader io.ReadCloser, err error)
-	WriteFile(path string, content io.ReadCloser) error
+	WriteFile(path string, content io.ReadCloser, size int64) error
 	MoveFile(srcPath, dstPath string) error
 }

@@ -168,7 +168,7 @@ func (c *Client) ReadFile(path string) (reader io.ReadCloser, err error) {
 	return resp.Body, nil
 }
 
-func (c *Client) WriteFile(path string, content io.ReadCloser) error {
+func (c *Client) WriteFile(path string, content io.ReadCloser, size int64) error {
 	resp, err := c.request("GET", "/resources/upload", url.Values{
 		"path":      []string{c.opt.toAbsPath(path)},
 		"overwrite": []string{"true"},

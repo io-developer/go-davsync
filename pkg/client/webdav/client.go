@@ -115,8 +115,8 @@ func (c *Client) ReadFile(path string) (reader io.ReadCloser, err error) {
 	return
 }
 
-func (c *Client) WriteFile(path string, content io.ReadCloser) error {
-	code, err := c.adapter.PutFile(c.opt.toAbsPath(path), content)
+func (c *Client) WriteFile(path string, content io.ReadCloser, size int64) error {
+	code, err := c.adapter.PutFile(c.opt.toAbsPath(path), content, size)
 	if err != nil {
 		return err
 	}

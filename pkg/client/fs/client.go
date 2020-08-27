@@ -62,7 +62,7 @@ func (c *Client) ReadFile(path string) (reader io.ReadCloser, err error) {
 	return os.Open(realpath)
 }
 
-func (c *Client) WriteFile(path string, content io.ReadCloser) error {
+func (c *Client) WriteFile(path string, content io.ReadCloser, size int64) error {
 	realpath := filepath.Join(c.BaseDir, path)
 	file, err := os.OpenFile(realpath, os.O_CREATE|os.O_WRONLY, c.FileMode)
 	if err != nil {
