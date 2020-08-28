@@ -49,6 +49,7 @@ func (p *Propfind) ToResource(path string) client.Resource {
 		Name:     p.DisplayName,
 		IsDir:    p.IsCollection(),
 		Size:     p.ContentLength,
+		HashETag: p.Etag,
 		UserData: p,
 	}
 }

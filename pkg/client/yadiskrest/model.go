@@ -41,12 +41,14 @@ func (r Resource) GetNormalizedAbsPath() string {
 
 func (r Resource) ToResource(path string) client.Resource {
 	return client.Resource{
-		Path:     path,
-		AbsPath:  r.Path,
-		IsDir:    r.IsDir(),
-		Name:     r.Name,
-		Size:     r.Size,
-		UserData: r,
+		Path:       path,
+		AbsPath:    r.Path,
+		IsDir:      r.IsDir(),
+		Name:       r.Name,
+		Size:       r.Size,
+		HashMd5:    r.Md5,
+		HashSha256: r.Sha256,
+		UserData:   r,
 	}
 }
 
