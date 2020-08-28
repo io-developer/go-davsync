@@ -1,6 +1,7 @@
 package model
 
 import (
+	"crypto"
 	"fmt"
 	"io"
 	"log"
@@ -15,6 +16,7 @@ import (
 type Sync1WayOpt struct {
 	IgnoreExisting         bool
 	IndirectUpload         bool
+	UploadPathFormat       string
 	AllowDelete            bool
 	SingleThreadedFileSize int64
 	WriteThreads           uint
@@ -42,6 +44,9 @@ type Sync1Way struct {
 }
 
 func NewSync1Way(src, dst client.Client, opt Sync1WayOpt) *Sync1Way {
+	if opt.UploadPathFormat == "" {
+		opt.UploadPathFormat = "/ucam-%x.bin"
+	}
 	if opt.WriteThreads < 1 {
 		opt.WriteThreads = 1
 	}
@@ -264,7 +269,7 @@ func (s *Sync1Way) isSingleThreadWriteNeeded(res client.Resource) bool {
 func (s *Sync1Way) writeFile(path string, res client.Resource, logFn func(string)) error {
 	uploadPath := path
 	if s.opt.IndirectUpload {
-		uploadPath = s.getUploadPath(path)
+		uploadPath = s.getUploadPath(path, res)
 		logFn(fmt.Sprintf("Indirect upload to '%s'", uploadPath))
 	}
 	reader, err := s.src.ReadFile(path)
@@ -396,8 +401,11 @@ func (s *Sync1Way) checkWrittenRes(
 	)
 }
 
-func (s *Sync1Way) getUploadPath(src string) string {
-	return fmt.Sprintf("/ucam-%d.bin", time.Now().Local().UnixNano())
+func (s *Sync1Way) getUploadPath(path string, res client.Resource) string {
+	sign := fmt.Sprintf("%s:%d", path, res.Size)
+	h := crypto.SHA256.New()
+	h.Write([]byte(sign))
+	return fmt.Sprintf(s.opt.UploadPathFormat, h.Sum(nil))
 }
 
 func diff(from, to []string) (both, add, del []string) {
