@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"regexp"
 	"sort"
@@ -15,10 +16,12 @@ type Sync1WayOpt struct {
 	IgnoreExisting         bool
 	IndirectUpload         bool
 	AllowDelete            bool
+	SingleThreadedFileSize int64
 	WriteThreads           uint
 	WriteRetry             uint
-	WriteRetryWait         time.Duration
-	SingleThreadedFileSize int64
+	WriteRetryDelay        time.Duration
+	WriteCheckTimeout      time.Duration
+	WriteCheckDelay        time.Duration
 }
 
 type Sync1Way struct {
@@ -44,6 +47,12 @@ func NewSync1Way(src, dst client.Client, opt Sync1WayOpt) *Sync1Way {
 	}
 	if opt.WriteRetry < 1 {
 		opt.WriteRetry = 1
+	}
+	if opt.WriteCheckTimeout < time.Second {
+		opt.WriteCheckTimeout = time.Second
+	}
+	if opt.WriteCheckDelay < time.Second {
+		opt.WriteCheckDelay = time.Second
 	}
 	return &Sync1Way{
 		src: src,
@@ -213,7 +222,7 @@ func (s *Sync1Way) writeFiles(errors chan<- error) {
 						break
 					}
 					logThread(fmt.Sprintf("Try %d / %d ERR: '%v'", i, s.opt.WriteRetry, writeErr))
-					time.Sleep(s.opt.WriteRetryWait)
+					time.Sleep(s.opt.WriteRetryDelay)
 				}
 				if isSingleThreaded {
 					logThread("Single-thread writting complete")
@@ -271,15 +280,56 @@ func (s *Sync1Way) writeFile(path string, res client.Resource, logFn func(string
 	logFn(fmt.Sprintf("Read md5: %s", readProgress.GetHashMd5()))
 	logFn(fmt.Sprintf("Read sha256: %s", readProgress.GetHashSha256()))
 
-	if err != nil {
+	if err != io.EOF {
 		return err
 	}
+	if !readProgress.IsComplete() {
+		return fmt.Errorf(
+			"File not written. Stopped at %d of %d (%s / %s)",
+			readProgress.GetBytesRead(),
+			readProgress.GetBytesTotal(),
+			FormatBytes(readProgress.GetBytesRead()),
+			FormatBytes(readProgress.GetBytesTotal()),
+		)
+	}
+
+	forceCheck := false
+	if err == io.EOF || forceCheck {
+		logFn(fmt.Sprintf("Checking %s", uploadPath))
+		err = s.checkWritten(uploadPath, res, readProgress, logFn)
+		if err != nil {
+			return err
+		}
+	}
+
 	if path != uploadPath {
 		logFn(fmt.Sprintf("Moving %s", uploadPath))
 		err = s.dst.MoveFile(uploadPath, path)
 		if err != nil {
 			return err
 		}
+	}
+
+	return nil
+}
+
+func (s *Sync1Way) checkWritten(path string, res client.Resource, r *ReadProgress, logFn func(string)) error {
+	isExist := false
+	timeout := s.opt.WriteCheckTimeout
+	timeStart := time.Now()
+	for time.Now().Sub(timeStart) < timeout {
+		logFn(fmt.Sprintf(
+			"Checking (%s / %s) '%s'",
+			path,
+			time.Now().Sub(timeStart).String(),
+			timeout.String(),
+		))
+
+		// check here
+		time.Sleep(s.opt.WriteCheckDelay)
+	}
+	if !isExist {
+		return fmt.Errorf("File written but not found atfer timeout %s", timeout.String())
 	}
 	return nil
 }

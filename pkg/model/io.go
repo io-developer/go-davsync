@@ -36,6 +36,10 @@ func NewReadProgress(r io.ReadCloser, len int64) *ReadProgress {
 	}
 }
 
+func (r *ReadProgress) IsComplete() bool {
+	return r.isComplete
+}
+
 func (r *ReadProgress) GetBytesRead() int64 {
 	return r.bytesRead
 }
@@ -116,8 +120,8 @@ func (r *ReadProgress) Log(force bool) {
 		r.logFn(fmt.Sprintf(
 			"%.2f%% (%s / %s)",
 			100*r.GetProgress(),
-			formatBytes(r.bytesRead),
-			formatBytes(r.bytesTotal),
+			FormatBytes(r.bytesRead),
+			FormatBytes(r.bytesTotal),
 		))
 	}
 }
@@ -126,7 +130,7 @@ func (r *ReadProgress) Close() error {
 	return r.reader.Close()
 }
 
-func formatBytes(size int64) string {
+func FormatBytes(size int64) string {
 	if size < 1024 {
 		return fmt.Sprintf("%d B", size)
 	}
