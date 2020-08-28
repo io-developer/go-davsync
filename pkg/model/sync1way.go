@@ -275,14 +275,14 @@ func (s *Sync1Way) writeFile(path string, res client.Resource, logFn func(string
 	readProgress.SetLogFn(logFn)
 	err = s.dst.WriteFile(uploadPath, readProgress, res.Size)
 	reader.Close()
+	if err != nil && err != io.EOF {
+		return err
+	}
 
 	logFn(fmt.Sprintf("Read bytes: %d", readProgress.GetBytesRead()))
 	logFn(fmt.Sprintf("Read md5: %s", readProgress.GetHashMd5()))
 	logFn(fmt.Sprintf("Read sha256: %s", readProgress.GetHashSha256()))
 
-	if err != io.EOF {
-		return err
-	}
 	if !readProgress.IsComplete() {
 		return fmt.Errorf(
 			"File not written. Stopped at %d of %d (%s / %s)",
