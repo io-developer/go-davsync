@@ -65,6 +65,7 @@ func createSrcClient(args Args) *fs.Client {
 }
 
 func createDstClient(args Args) client.Client {
+	//return createDavClient(args)
 	return createYadiskClient(args)
 }
 
@@ -104,13 +105,14 @@ func main() {
 
 	src := createSrcClient(args)
 	dst := createDstClient(args)
+
 	sync := model.NewSync1Way(src, dst, model.Sync1WayOpt{
 		IndirectUpload:         true,
 		IgnoreExisting:         true,
 		AllowDelete:            false,
 		WriteThreads:           8,
 		WriteRetry:             3,
-		WriteRetryWait:         10 * time.Second,
+		WriteRetryDelay:        10 * time.Second,
 		SingleThreadedFileSize: 128 * 1024 * 1024,
 	})
 

@@ -55,14 +55,7 @@ func (c *Client) ReadParents() (absPaths []string, items map[string]client.Resou
 	absPaths = c.treeParentPaths
 	items = map[string]client.Resource{}
 	for absPath, parent := range c.treeParents {
-		items[absPath] = client.Resource{
-			Path:     absPath,
-			AbsPath:  parent.Path,
-			IsDir:    parent.IsDir(),
-			Name:     parent.Name,
-			Size:     parent.Size,
-			UserData: parent,
-		}
+		items[absPath] = parent.ToResource(absPath)
 	}
 	return
 }
@@ -74,16 +67,34 @@ func (c *Client) ReadTree() (paths []string, items map[string]client.Resource, e
 	}
 	items = map[string]client.Resource{}
 	for path, item := range c.treeItems {
-		items[path] = client.Resource{
-			Path:     path,
-			AbsPath:  item.Path,
-			IsDir:    item.IsDir(),
-			Name:     item.Name,
-			Size:     item.Size,
-			UserData: item,
-		}
+		items[path] = item.ToResource(path)
 	}
 	return c.treeItemPaths, items, nil
+}
+
+func (c *Client) GetResource(path string) (res client.Resource, exists bool, err error) {
+	resp, err := c.request("GET", "/resources/", url.Values{
+		"path": []string{c.opt.toAbsPath(path)},
+	})
+	if resp.StatusCode == 404 {
+		err = nil
+		return
+	}
+	if err != nil {
+		return
+	}
+	bytes, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return
+	}
+	yaRes := Resource{}
+	err = json.Unmarshal(bytes, &yaRes)
+	if err != nil {
+		return
+	}
+	res = yaRes.ToResource(path)
+	exists = true
+	return
 }
 
 func (c *Client) MakeDir(path string, recursive bool) error {

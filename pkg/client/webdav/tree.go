@@ -36,14 +36,7 @@ func (t *Tree) ReadParents() (absPaths []string, resources map[string]client.Res
 	resources = map[string]client.Resource{}
 	for path, propfind := range t.parents {
 		absPaths = append(absPaths, path)
-		resources[path] = client.Resource{
-			Path:     path,
-			AbsPath:  propfind.GetNormalizedAbsPath(),
-			Name:     propfind.DisplayName,
-			IsDir:    propfind.IsCollection(),
-			Size:     propfind.ContentLength,
-			UserData: propfind,
-		}
+		resources[path] = propfind.ToResource(path)
 	}
 	sort.Slice(absPaths, func(i, j int) bool {
 		return absPaths[i] < absPaths[j]
@@ -57,10 +50,10 @@ func (t *Tree) readParents() error {
 	if total < 1 {
 		return nil
 	}
-	path := ""
+	absPath := ""
 	for _, part := range parts {
-		path += "/" + part
-		some, code, err := t.adapter.Propfind(path, "0")
+		absPath += "/" + part
+		some, code, err := t.adapter.Propfind(absPath, "0")
 		if code == 404 {
 			return nil
 		}
@@ -70,8 +63,8 @@ func (t *Tree) readParents() error {
 		if len(some.Propfinds) < 1 {
 			return err
 		}
-		normPath := client.PathNormalize(path, true)
-		t.parents[normPath] = some.Propfinds[0]
+		parent := some.Propfinds[0]
+		t.parents[parent.GetNormalizedAbsPath()] = parent
 	}
 	return nil
 }
@@ -96,14 +89,22 @@ func (t *Tree) ReadTree() (paths []string, resources map[string]client.Resource,
 	paths = t.itemPaths
 	resources = map[string]client.Resource{}
 	for path, propfind := range t.items {
-		resources[path] = client.Resource{
-			Path:     path,
-			AbsPath:  propfind.GetNormalizedAbsPath(),
-			Name:     propfind.DisplayName,
-			IsDir:    propfind.IsCollection(),
-			Size:     propfind.ContentLength,
-			UserData: propfind,
-		}
+		resources[path] = propfind.ToResource(path)
+	}
+	return
+}
+
+func (t *Tree) GetResource(path string) (res client.Resource, exists bool, err error) {
+	adapter := NewAdapter(t.opt)
+	some, code, err := adapter.Propfind(t.opt.toAbsPath(path), "0")
+	if err == nil && len(some.Propfinds) == 1 {
+		propfind := some.Propfinds[0]
+		res = propfind.ToResource(path)
+		exists = true
+		return
+	}
+	if code == 404 {
+		err = nil
 	}
 	return
 }

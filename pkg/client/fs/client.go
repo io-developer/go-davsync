@@ -33,19 +33,26 @@ func (c *Client) ReadTree() (paths []string, nodes map[string]client.Resource, e
 	paths = []string{}
 	nodes = map[string]client.Resource{}
 	err = filepath.Walk(c.BaseDir, func(absPath string, info os.FileInfo, err error) error {
-		absPath = client.PathNormalize(absPath, info.IsDir())
-		path := strings.TrimPrefix(absPath, strings.TrimRight(c.BaseDir, "/"))
+		res := c.toResource(absPath, info)
+		path := res.Path
 		paths = append(paths, path)
-		nodes[path] = client.Resource{
-			AbsPath:  absPath,
-			Path:     path,
-			Name:     info.Name(),
-			IsDir:    info.IsDir(),
-			Size:     info.Size(),
-			FileInfo: &info,
-		}
+		nodes[path] = res
 		return nil
 	})
+	return
+}
+
+func (c *Client) GetResource(path string) (res client.Resource, exists bool, err error) {
+	absPath := filepath.Join(c.BaseDir, path)
+	info, err := os.Stat(absPath)
+	if err == nil {
+		res = c.toResource(absPath, info)
+		exists = true
+		return
+	}
+	if err == os.ErrNotExist {
+		err = nil
+	}
 	return
 }
 
@@ -73,4 +80,17 @@ func (c *Client) WriteFile(path string, content io.ReadCloser, size int64) error
 		return err
 	}
 	return content.Close()
+}
+
+func (c *Client) toResource(absPath string, info os.FileInfo) client.Resource {
+	absPath = client.PathNormalize(absPath, info.IsDir())
+	path := strings.TrimPrefix(absPath, strings.TrimRight(c.BaseDir, "/"))
+	return client.Resource{
+		AbsPath:  absPath,
+		Path:     path,
+		Name:     info.Name(),
+		IsDir:    info.IsDir(),
+		Size:     info.Size(),
+		FileInfo: &info,
+	}
 }

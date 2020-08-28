@@ -39,6 +39,17 @@ func (r Resource) GetNormalizedAbsPath() string {
 	return client.PathNormalize(absPath, r.IsDir())
 }
 
+func (r Resource) ToResource(path string) client.Resource {
+	return client.Resource{
+		Path:     path,
+		AbsPath:  r.Path,
+		IsDir:    r.IsDir(),
+		Name:     r.Name,
+		Size:     r.Size,
+		UserData: r,
+	}
+}
+
 type UploadInfo struct {
 	Href      string `json:"href"`
 	Method    string `json:"method"`

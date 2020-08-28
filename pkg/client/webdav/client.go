@@ -43,6 +43,10 @@ func (c *Client) ReadTree() (paths []string, items map[string]client.Resource, e
 	return c.tree.ReadTree()
 }
 
+func (c *Client) GetResource(path string) (res client.Resource, exists bool, err error) {
+	return c.tree.GetResource(path)
+}
+
 func (c *Client) MakeDir(path string, recursive bool) error {
 	if recursive {
 		return c.makeDirRecursive(c.opt.toAbsPath(path))

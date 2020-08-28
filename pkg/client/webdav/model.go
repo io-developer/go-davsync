@@ -42,6 +42,17 @@ func (p *Propfind) GetNormalizedAbsPath() string {
 	return client.PathNormalize(p.GetHrefUnicode(), p.IsCollection())
 }
 
+func (p *Propfind) ToResource(path string) client.Resource {
+	return client.Resource{
+		Path:     path,
+		AbsPath:  p.GetNormalizedAbsPath(),
+		Name:     p.DisplayName,
+		IsDir:    p.IsCollection(),
+		Size:     p.ContentLength,
+		UserData: p,
+	}
+}
+
 type DavTime struct {
 	time.Time
 }
