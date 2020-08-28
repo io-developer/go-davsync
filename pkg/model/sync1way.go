@@ -283,23 +283,10 @@ func (s *Sync1Way) writeFile(path string, res client.Resource, logFn func(string
 	logFn(fmt.Sprintf("Read md5: %s", readProgress.GetHashMd5()))
 	logFn(fmt.Sprintf("Read sha256: %s", readProgress.GetHashSha256()))
 
-	if !readProgress.IsComplete() {
-		return fmt.Errorf(
-			"File not written. Stopped at %d of %d (%s / %s)",
-			readProgress.GetBytesRead(),
-			readProgress.GetBytesTotal(),
-			FormatBytes(readProgress.GetBytesRead()),
-			FormatBytes(readProgress.GetBytesTotal()),
-		)
-	}
-
-	forceCheck := false
-	if err == io.EOF || forceCheck {
-		logFn(fmt.Sprintf("Checking %s", uploadPath))
-		err = s.checkWritten(uploadPath, res, readProgress, logFn)
-		if err != nil {
-			return err
-		}
+	logFn(fmt.Sprintf("Checking %s", uploadPath))
+	err = s.checkWritten(uploadPath, res, readProgress, logFn)
+	if err != nil {
+		return err
 	}
 
 	if path != uploadPath {
@@ -313,8 +300,21 @@ func (s *Sync1Way) writeFile(path string, res client.Resource, logFn func(string
 	return nil
 }
 
-func (s *Sync1Way) checkWritten(path string, res client.Resource, r *ReadProgress, logFn func(string)) error {
-	isExist := false
+func (s *Sync1Way) checkWritten(
+	path string,
+	res client.Resource,
+	r *ReadProgress,
+	logFn func(string),
+) (err error) {
+	if !r.IsComplete() {
+		return fmt.Errorf(
+			"File not written. Stopped at %d of %d (%s / %s)",
+			r.GetBytesRead(),
+			r.GetBytesTotal(),
+			FormatBytes(r.GetBytesRead()),
+			FormatBytes(r.GetBytesTotal()),
+		)
+	}
 	timeout := s.opt.WriteCheckTimeout
 	timeStart := time.Now()
 	for time.Now().Sub(timeStart) < timeout {
@@ -325,13 +325,75 @@ func (s *Sync1Way) checkWritten(path string, res client.Resource, r *ReadProgres
 			timeout.String(),
 		))
 
+		written, isExist, resErr := s.dst.GetResource(path)
+		err = resErr
+		if err == nil && isExist {
+			err = s.checkWrittenRes(path, res, written, r, logFn)
+			if err == nil {
+				return
+			}
+		}
+
 		// check here
 		time.Sleep(s.opt.WriteCheckDelay)
 	}
-	if !isExist {
-		return fmt.Errorf("File written but not found atfer timeout %s", timeout.String())
+	if err != nil {
+		return err
 	}
-	return nil
+	return fmt.Errorf("File written but not found atfer timeout %s", timeout.String())
+}
+
+func (s *Sync1Way) checkWrittenRes(
+	path string,
+	src, written client.Resource,
+	r *ReadProgress,
+	logFn func(string),
+) (err error) {
+	if written.HashSha256 != "" {
+		if written.HashSha256 == r.GetHashSha256() {
+			logFn("Check OK: SHA256 strict matched")
+			return nil
+		}
+		logFn("Check FAIL: SHA256 not matched")
+		return fmt.Errorf(
+			"Written SHA256 not matched (%s -> %s), %s",
+			r.GetHashSha256(),
+			written.HashSha256,
+			path,
+		)
+	}
+	if written.HashMd5 != "" {
+		if written.HashMd5 == r.GetHashMd5() {
+			logFn("Check OK: MD5 strict matched")
+			return nil
+		}
+		logFn("Check FAIL: MD5 not matched")
+		return fmt.Errorf(
+			"Written MD5 not matched (%s -> %s), %s",
+			r.GetHashMd5(),
+			written.HashMd5,
+			path,
+		)
+	}
+	if written.MatchAnyHash(r.GetHashSha256()) {
+		logFn("Check OK: SHA256 matched")
+		return nil
+	}
+	if written.MatchAnyHash(r.GetHashMd5()) {
+		logFn("Check OK: MD5 matched")
+		return nil
+	}
+	if written.Size == src.Size && src.Size == r.bytesRead {
+		logFn("Check OK: size matched")
+		return nil
+	}
+	logFn("Check FAIL: size not matched")
+	return fmt.Errorf(
+		"Written size not matched (%d -> %d), %s",
+		src.Size,
+		written.Size,
+		path,
+	)
 }
 
 func (s *Sync1Way) getUploadPath(src string) string {
