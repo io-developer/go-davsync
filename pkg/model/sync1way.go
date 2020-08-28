@@ -41,6 +41,8 @@ type Sync1Way struct {
 	bothPaths []string
 	addPaths  []string
 	delPaths  []string
+
+	signleWriteMutex sync.Mutex
 }
 
 func NewSync1Way(src, dst client.Client, opt Sync1WayOpt) *Sync1Way {
@@ -60,9 +62,10 @@ func NewSync1Way(src, dst client.Client, opt Sync1WayOpt) *Sync1Way {
 		opt.WriteCheckDelay = time.Second
 	}
 	return &Sync1Way{
-		src: src,
-		dst: dst,
-		opt: opt,
+		src:              src,
+		dst:              dst,
+		opt:              opt,
+		signleWriteMutex: sync.Mutex{},
 	}
 }
 
@@ -191,8 +194,6 @@ func (s *Sync1Way) writeFiles(errors chan<- error) {
 	paths := make(chan string)
 	group := sync.WaitGroup{}
 
-	sthreadWriteMutex := sync.Mutex{}
-
 	thread := func(id uint) {
 		curPath := "-"
 		logThread := func(msg string) {
@@ -208,17 +209,9 @@ func (s *Sync1Way) writeFiles(errors chan<- error) {
 					group.Done()
 					return
 				}
-				sthreadWriteMutex.Lock()
 				curPath = path
-
 				res := s.srcResources[path]
-				isSingleThreaded := s.isSingleThreadWriteNeeded(res)
-				if isSingleThreaded {
-					logThread("Single-thread writting start..")
-				} else {
-					logThread("Multi-thread writting")
-					sthreadWriteMutex.Unlock()
-				}
+
 				var writeErr error = nil
 				for i := uint(1); i <= s.opt.WriteRetry; i++ {
 					logThread(fmt.Sprintf("Try %d / %d", i, s.opt.WriteRetry))
@@ -228,10 +221,6 @@ func (s *Sync1Way) writeFiles(errors chan<- error) {
 					}
 					logThread(fmt.Sprintf("Try %d / %d ERR: '%v'", i, s.opt.WriteRetry, writeErr))
 					time.Sleep(s.opt.WriteRetryDelay)
-				}
-				if isSingleThreaded {
-					logThread("Single-thread writting complete")
-					sthreadWriteMutex.Unlock()
 				}
 				if writeErr != nil {
 					logThread(fmt.Sprintf("ERROR '%v'", writeErr))
@@ -267,18 +256,29 @@ func (s *Sync1Way) isSingleThreadWriteNeeded(res client.Resource) bool {
 }
 
 func (s *Sync1Way) writeFile(path string, res client.Resource, logFn func(string)) error {
-	uploadPath := path
-	if s.opt.IndirectUpload {
-		uploadPath = s.getUploadPath(path, res)
-		logFn(fmt.Sprintf("Indirect upload to '%s'", uploadPath))
+	s.signleWriteMutex.Lock()
+	isSingleThreaded := s.isSingleThreadWriteNeeded(res)
+	if isSingleThreaded {
+		logFn("Single-thread write begin..")
+	} else {
+		s.signleWriteMutex.Unlock()
 	}
+
+	uploadPath := s.getUploadPath(path, res, s.opt.IndirectUpload)
+	logFn(fmt.Sprintf("Uploading to '%s'", uploadPath))
+
 	reader, err := s.src.ReadFile(path)
 	if err != nil {
 		return err
 	}
 	readProgress := NewReadProgress(reader, res.Size)
 	readProgress.SetLogFn(logFn)
+
 	err = s.dst.WriteFile(uploadPath, readProgress, res.Size)
+	if isSingleThreaded {
+		logFn("Single-thread write end")
+		s.signleWriteMutex.Unlock()
+	}
 	reader.Close()
 	if err != nil && err != io.EOF {
 		return err
@@ -325,11 +325,10 @@ func (s *Sync1Way) checkWritten(
 	for time.Now().Sub(timeStart) < timeout {
 		logFn(fmt.Sprintf(
 			"Checking (%s / %s) '%s'",
-			path,
 			time.Now().Sub(timeStart).String(),
 			timeout.String(),
+			path,
 		))
-
 		written, isExist, resErr := s.dst.GetResource(path)
 		err = resErr
 		if err == nil && isExist {
@@ -338,8 +337,6 @@ func (s *Sync1Way) checkWritten(
 				return
 			}
 		}
-
-		// check here
 		time.Sleep(s.opt.WriteCheckDelay)
 	}
 	if err != nil {
@@ -401,7 +398,10 @@ func (s *Sync1Way) checkWrittenRes(
 	)
 }
 
-func (s *Sync1Way) getUploadPath(path string, res client.Resource) string {
+func (s *Sync1Way) getUploadPath(path string, res client.Resource, indirect bool) string {
+	if !indirect {
+		return path
+	}
 	sign := fmt.Sprintf("%s:%d", path, res.Size)
 	h := crypto.SHA256.New()
 	h.Write([]byte(sign))
