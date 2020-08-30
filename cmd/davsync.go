@@ -65,8 +65,8 @@ func createSrcClient(args Args) *fs.Client {
 }
 
 func createDstClient(args Args) client.Client {
-	return createDavClient(args)
-	//return createYadiskClient(args)
+	//return createDavClient(args)
+	return createYadiskClient(args)
 }
 
 func createFsClient(args Args) *fs.Client {
