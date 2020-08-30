@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/url"
 	"regexp"
 	"sort"
 	"sync"
@@ -280,7 +281,13 @@ func (s *Sync1Way) writeFile(path string, res client.Resource, logFn func(string
 		s.signleWriteMutex.Unlock()
 	}
 	reader.Close()
-	if err != nil && err != io.EOF {
+
+	logFn(fmt.Sprintf("readProgress IsComplete %t", readProgress.IsComplete()))
+	logFn(fmt.Sprintf("err == nil: %t", err == nil))
+	logFn(fmt.Sprintf("err %v, %#v", err, err))
+	logFn(fmt.Sprintf("isErrEOF %t", isErrEOF(err)))
+
+	if err != nil && !isErrEOF(err) {
 		return err
 	}
 
@@ -452,4 +459,28 @@ func getSortedDirs(paths []string) []string {
 		return sorted[i] < sorted[j]
 	})
 	return sorted
+}
+
+func isErrEOF(err error) bool {
+	if err == nil {
+		return false
+	}
+	if err == io.EOF {
+		fmt.Println("isErrEOF: io.EOF")
+		return true
+	}
+	if err.Error() == "EOF" {
+		fmt.Println("isErrEOF: 'EOF'")
+		return true
+	}
+	uerr, isURL := err.(*url.Error)
+	if isURL && uerr.Err == io.EOF {
+		fmt.Println("isErrEOF: isURL io.EOF")
+		return true
+	}
+	if isURL && uerr.Err.Error() == "EOF" {
+		fmt.Println("isErrEOF: isURL 'EOF'")
+		return true
+	}
+	return false
 }
