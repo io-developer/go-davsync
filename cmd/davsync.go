@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"time"
@@ -15,98 +16,118 @@ import (
 )
 
 type Args struct {
-	localPath   string
-	remotePath  string
-	secretsFile string
-	secrets     Secrets
+	input           string
+	inputConfig     Config
+	inputConfigFile string
+
+	output           string
+	outputConfig     Config
+	outputConfigFile string
 }
 
-type Secrets struct {
-	BaseURI   string
-	Token     string
-	TokenType string
-	User      string
-	Pass      string
+type Config struct {
+	BaseDir    string
+	Type       ClientType
+	Webdav     webdav.Options
+	YadiskRest yadiskrest.Options
 }
 
-func parseArgs() Args {
-	localPath := flag.String("local", "./", "Local directory path. Example: /tmp/test")
-	remotePath := flag.String("remote", "/", "Webdav directory path. Example: /test")
-	secretsFile := flag.String("secrets", ".davsync", "JSON config for base URI and auth secrets")
+type ClientType string
+
+const (
+	ClientTypeLocal      = ClientType("Local")
+	ClientTypeWebdav     = ClientType("Webdav")
+	ClientTypeYadiskRest = ClientType("YadiskRest")
+	ClientTypeYadisk     = ClientType("Yadisk")
+)
+
+func parseArgs() (args Args, err error) {
+	flag.StringVar(&args.input, "i", "./", "Input directory path. Example: /tmp/test")
+	flag.StringVar(&args.inputConfigFile, "iconf", "", "JSON secrets for source client")
+
+	flag.StringVar(&args.output, "o", "/", "Output directory path. Example: /test")
+	flag.StringVar(&args.outputConfigFile, "oconf", ".davsync", "JSON secrets for destination client")
+
 	flag.Parse()
 
-	args := Args{
-		localPath:   *localPath,
-		remotePath:  *remotePath,
-		secretsFile: *secretsFile,
+	args.inputConfig, err = parseConfig(args.inputConfigFile, args.input)
+	if err != nil {
+		return
 	}
-
-	if *secretsFile != "" {
-		bytes, err := ioutil.ReadFile(*secretsFile)
-		log.Println("bytes", string(bytes))
-		if err != nil {
-			log.Fatal(err)
-		}
-		secrets := Secrets{}
-		err = json.Unmarshal(bytes, &secrets)
-		if err != nil {
-			log.Fatal(err)
-		}
-		args.secrets = secrets
-
-		log.Println("secrets", secrets)
+	args.outputConfig, err = parseConfig(args.outputConfigFile, args.output)
+	if err != nil {
+		return
 	}
-
-	return args
+	return
 }
 
-func createSrcClient(args Args) *fs.Client {
-	return createFsClient(args)
+func parseConfig(path string, defBaseDir string) (conf Config, err error) {
+	if path != "" {
+		var bytes []byte
+		bytes, err = ioutil.ReadFile(path)
+		log.Println("parseConfig bytes", path, string(bytes))
+		if err != nil {
+			return
+		}
+		err = json.Unmarshal(bytes, &conf)
+		if err != nil {
+			return
+		}
+	}
+	if conf.BaseDir == "" {
+		conf.BaseDir = defBaseDir
+	}
+	if conf.Type == ClientType("") {
+		conf.Type = ClientTypeLocal
+	}
+	if conf.Webdav.BaseDir == "" {
+		conf.Webdav.BaseDir = conf.BaseDir
+	}
+	if conf.YadiskRest.BaseDir == "" {
+		conf.YadiskRest.BaseDir = conf.BaseDir
+	}
+	if conf.YadiskRest.ApiUri == "" {
+		conf.YadiskRest.ApiUri = "https://cloud-api.yandex.net/v1/disk"
+	}
+	return
 }
 
-func createDstClient(args Args) client.Client {
-	//return createDavClient(args)
-	return createYadiskClient(args)
-}
-
-func createFsClient(args Args) *fs.Client {
-	return fs.NewClient(args.localPath)
-}
-
-func createDavClient(args Args) *webdav.Client {
-	return webdav.NewClient(webdav.Options{
-		BaseDir:       args.remotePath,
-		DavUri:        args.secrets.BaseURI,
-		AuthToken:     args.secrets.Token,
-		AuthTokenType: args.secrets.TokenType,
-		AuthUser:      args.secrets.User,
-		AuthPass:      args.secrets.Pass,
-	})
-}
-
-func createYadiskRestClient(args Args) *yadiskrest.Client {
-	return yadiskrest.NewClient(yadiskrest.Options{
-		BaseDir:   args.remotePath,
-		ApiUri:    "https://cloud-api.yandex.net/v1/disk",
-		AuthToken: args.secrets.Token,
-	})
-}
-
-func createYadiskClient(args Args) client.Client {
-	yadisk := createYadiskRestClient(args)
-	dav := createDavClient(args)
-	dav.SetTree(yadisk)
-	return dav
+func createClient(conf Config) (client.Client, error) {
+	if conf.Type == ClientTypeLocal {
+		return fs.NewClient(conf.BaseDir), nil
+	}
+	if conf.Type == ClientTypeWebdav {
+		return webdav.NewClient(conf.Webdav), nil
+	}
+	if conf.Type == ClientTypeYadiskRest {
+		return yadiskrest.NewClient(conf.YadiskRest), nil
+	}
+	if conf.Type == ClientTypeYadisk {
+		rest := yadiskrest.NewClient(conf.YadiskRest)
+		dav := webdav.NewClient(conf.Webdav)
+		dav.SetTree(rest)
+		return dav, nil
+	}
+	return nil, fmt.Errorf("Unexpected client type '%s'", conf.Type)
 }
 
 func main() {
-	args := parseArgs()
+	args, err := parseArgs()
+	if err != nil {
+		log.Fatalln("Error at paring cli args", err)
+	}
 	log.Printf("CLI ARGS:\n%#v\n\n", args)
 
-	src := createSrcClient(args)
-	dst := createDstClient(args)
+	input, err := createClient(args.inputConfig)
+	if err != nil {
+		log.Fatalln("Input client creating error", err)
+	}
+	output, err := createClient(args.outputConfig)
+	if err != nil {
+		log.Fatalln("Output client creating error", err)
+	}
 
-	sync := synchronizer.NewOneWay(src, dst, synchronizer.OneWayOpt{
+	sync := synchronizer.NewOneWay(input, output, synchronizer.OneWayOpt{
 		IndirectUpload:         true,
 		IgnoreExisting:         true,
 		AllowDelete:            false,
