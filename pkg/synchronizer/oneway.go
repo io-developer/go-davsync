@@ -258,32 +258,64 @@ func (s *OneWay) isSingleThreadWriteNeeded(res client.Resource) bool {
 }
 
 func (s *OneWay) writeFile(path string, res client.Resource, logFn func(string)) error {
+	isSingleWriteLocked := true
 	s.signleWriteMutex.Lock()
-	isSingleThreaded := s.isSingleThreadWriteNeeded(res)
-	if isSingleThreaded {
-		logFn("Single-thread write begin..")
-	} else {
+
+	if !s.isSingleThreadWriteNeeded(res) {
+		isSingleWriteLocked = false
 		s.signleWriteMutex.Unlock()
+	} else {
+		logFn("Single-thread write begin..")
+	}
+
+	unlockIfNeeded := func() {
+		if isSingleWriteLocked {
+			isSingleWriteLocked = false
+
+			logFn("Single-thread write end")
+			s.signleWriteMutex.Unlock()
+		}
 	}
 
 	uploadPath := s.getUploadPath(path, res, s.opt.IndirectUpload)
 	logFn(fmt.Sprintf("Uploading to '%s'", uploadPath))
 
-	reader, err := s.src.ReadFile(path)
+	srcReader, err := s.src.ReadFile(path)
 	if err != nil {
+		unlockIfNeeded()
 		return err
 	}
-	readProgress := util.NewRead(reader, res.Size)
-	readProgress.SetLogFn(logFn)
 
-	err = s.dst.WriteFile(uploadPath, readProgress, res.Size)
-	if isSingleThreaded {
-		logFn("Single-thread write end")
-		s.signleWriteMutex.Unlock()
+	logReader := func(r *util.Reader) {
+		logFn(fmt.Sprintf(
+			"%.2f%% (%s / %s)",
+			100*r.GetProgress(),
+			util.FormatBytes(r.GetBytesRead()),
+			util.FormatBytes(r.GetBytesTotal()),
+		))
 	}
+	readerLogInterval := 2 * time.Second
+	readerLogLastTime := time.Now()
+
+	reader := util.NewRead(srcReader, res.Size)
+	reader.OnProgress = func(r *util.Reader) {
+		if time.Now().Sub(readerLogLastTime) >= readerLogInterval {
+			readerLogLastTime = time.Now()
+			logReader(r)
+		}
+	}
+	reader.OnComplete = func(r *util.Reader) {
+		logReader(r)
+		unlockIfNeeded()
+	}
+
+	err = s.dst.WriteFile(uploadPath, reader, res.Size)
+	time.Sleep(time.Second)
+
+	unlockIfNeeded()
 	reader.Close()
 
-	logFn(fmt.Sprintf("readProgress IsComplete %t", readProgress.IsComplete()))
+	logFn(fmt.Sprintf("readProgress IsComplete %t", reader.IsComplete()))
 	logFn(fmt.Sprintf("err == nil: %t", err == nil))
 	logFn(fmt.Sprintf("err %v, %#v", err, err))
 	logFn(fmt.Sprintf("isErrEOF %t", isErrEOF(err)))
@@ -292,12 +324,12 @@ func (s *OneWay) writeFile(path string, res client.Resource, logFn func(string))
 		return err
 	}
 
-	logFn(fmt.Sprintf("Read bytes: %d", readProgress.GetBytesRead()))
-	logFn(fmt.Sprintf("Read md5: %s", readProgress.GetHashMd5()))
-	logFn(fmt.Sprintf("Read sha256: %s", readProgress.GetHashSha256()))
+	logFn(fmt.Sprintf("Read bytes: %d", reader.GetBytesRead()))
+	logFn(fmt.Sprintf("Read md5: %s", reader.GetHashMd5()))
+	logFn(fmt.Sprintf("Read sha256: %s", reader.GetHashSha256()))
 
 	logFn(fmt.Sprintf("Checking %s", uploadPath))
-	err = s.checkWritten(uploadPath, res, readProgress, logFn)
+	err = s.checkWritten(uploadPath, res, reader, logFn)
 	if err != nil {
 		return err
 	}

@@ -65,8 +65,8 @@ func createSrcClient(args Args) *fs.Client {
 }
 
 func createDstClient(args Args) client.Client {
-	return createDavClient(args)
-	//return createYadiskClient(args)
+	//return createDavClient(args)
+	return createYadiskClient(args)
 }
 
 func createFsClient(args Args) *fs.Client {
@@ -110,8 +110,8 @@ func main() {
 		IndirectUpload:         true,
 		IgnoreExisting:         true,
 		AllowDelete:            false,
-		SingleThreadedFileSize: 128 * 1024 * 1024,
-		WriteThreads:           1,
+		SingleThreadedFileSize: 64 * 1024 * 1024,
+		WriteThreads:           8,
 		WriteRetry:             2,
 		WriteRetryDelay:        30 * time.Second,
 		WriteCheckTimeout:      30 * time.Minute,
