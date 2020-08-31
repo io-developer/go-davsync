@@ -15,25 +15,33 @@ import (
 	"github.com/io-developer/go-davsync/pkg/synchronizer"
 )
 
+// Args of cli
 type Args struct {
 	input           string
-	inputConfig     Config
+	inputConfig     ClientConfig
 	inputConfigFile string
 
 	output           string
-	outputConfig     Config
+	outputConfig     ClientConfig
 	outputConfigFile string
+
+	sync           string
+	syncConfig     SyncConfig
+	syncConfigFile string
 }
 
-type Config struct {
+// ClientConfig of input/output
+type ClientConfig struct {
 	BaseDir    string
 	Type       ClientType
 	Webdav     webdav.Options
 	YadiskRest yadiskrest.Options
 }
 
+// ClientType ..
 type ClientType string
 
+// Known types
 const (
 	ClientTypeLocal      = ClientType("Local")
 	ClientTypeWebdav     = ClientType("Webdav")
@@ -41,31 +49,52 @@ const (
 	ClientTypeYadisk     = ClientType("Yadisk")
 )
 
-func parseArgs() (args Args, err error) {
-	flag.StringVar(&args.input, "i", "./", "Input directory path. Example: /tmp/test")
-	flag.StringVar(&args.inputConfigFile, "iconf", "", "JSON secrets for source client")
+// SyncConfig of sync
+type SyncConfig struct {
+	Type   SyncType
+	OneWay synchronizer.OneWayOpt
+}
 
-	flag.StringVar(&args.output, "o", "/", "Output directory path. Example: /test")
-	flag.StringVar(&args.outputConfigFile, "oconf", ".davsync", "JSON secrets for destination client")
+// SyncType ..
+type SyncType string
+
+// Known types
+const (
+	SyncTypeOneWay = SyncType("OneWay")
+)
+
+func parseArgs() (args Args, err error) {
+	flag.StringVar(&args.input, "i", "./", "Default input directory path. Example: /tmp/test")
+	flag.StringVar(&args.inputConfigFile, "iconf", "", "Input client config JSON file")
+
+	flag.StringVar(&args.output, "o", "/", "Default output directory path. Example: /test")
+	flag.StringVar(&args.outputConfigFile, "oconf", ".davsync", "Output client config JSON file")
+
+	flag.StringVar(&args.sync, "t", "OneWay", "Default sync type")
+	flag.StringVar(&args.syncConfigFile, "tconf", "", "Sync config JSON file")
 
 	flag.Parse()
 
-	args.inputConfig, err = parseConfig(args.inputConfigFile, args.input)
+	args.inputConfig, err = parseClientConfig(args.inputConfigFile, args.input)
 	if err != nil {
 		return
 	}
-	args.outputConfig, err = parseConfig(args.outputConfigFile, args.output)
+	args.outputConfig, err = parseClientConfig(args.outputConfigFile, args.output)
+	if err != nil {
+		return
+	}
+	args.syncConfig, err = parseSyncConfig(args.syncConfigFile, SyncType(args.sync))
 	if err != nil {
 		return
 	}
 	return
 }
 
-func parseConfig(path string, defBaseDir string) (conf Config, err error) {
+func parseClientConfig(path string, defBaseDir string) (conf ClientConfig, err error) {
 	if path != "" {
 		var bytes []byte
 		bytes, err = ioutil.ReadFile(path)
-		log.Println("parseConfig bytes", path, string(bytes))
+		log.Println("parseClientConfig bytes", path, string(bytes))
 		if err != nil {
 			return
 		}
@@ -92,7 +121,7 @@ func parseConfig(path string, defBaseDir string) (conf Config, err error) {
 	return
 }
 
-func createClient(conf Config) (client.Client, error) {
+func createClient(conf ClientConfig) (client.Client, error) {
 	if conf.Type == ClientTypeLocal {
 		return fs.NewClient(conf.BaseDir), nil
 	}
@@ -111,6 +140,74 @@ func createClient(conf Config) (client.Client, error) {
 	return nil, fmt.Errorf("Unexpected client type '%s'", conf.Type)
 }
 
+func parseSyncConfig(path string, defType SyncType) (conf SyncConfig, err error) {
+	if path != "" {
+		var bytes []byte
+		bytes, err = ioutil.ReadFile(path)
+		log.Println("parseSyncConfig bytes", path, string(bytes))
+		if err != nil {
+			return
+		}
+		err = json.Unmarshal(bytes, &conf)
+		if err != nil {
+			return
+		}
+	} else {
+		conf = SyncConfig{
+			Type: defType,
+			OneWay: synchronizer.OneWayOpt{
+				IndirectUpload:         true,
+				IgnoreExisting:         true,
+				AllowDelete:            false,
+				SingleThreadedFileSize: 64 * 1024 * 1024,
+				WriteThreads:           8,
+				WriteRetry:             2,
+				WriteRetryDelay:        30 * time.Second,
+				WriteCheckTimeout:      30 * time.Minute,
+				WriteCheckDelay:        10 * time.Second,
+			},
+		}
+	}
+	if conf.Type == "" {
+		conf.Type = defType
+	}
+	return
+}
+
+func sync(input, output client.Client, conf SyncConfig) error {
+	if conf.Type == SyncTypeOneWay {
+		return syncOnewWay(input, output, conf)
+	}
+	return fmt.Errorf("Unexpected sync-type '%s'", string(conf.Type))
+}
+
+func syncOnewWay(input, output client.Client, conf SyncConfig) error {
+	log.Println("Sync OneWay start..")
+
+	s := synchronizer.NewOneWay(input, output, conf.OneWay)
+
+	errors := make(chan error)
+	go func(errors <-chan error) {
+		log.Println("Listening for errors...")
+		for {
+			select {
+			case err, ok := <-errors:
+				if !ok {
+					return
+				}
+				log.Println("!!! ERROR", err)
+			}
+		}
+	}(errors)
+
+	s.Sync(errors)
+	close(errors)
+
+	log.Println("Sync OneWay end")
+
+	return nil
+}
+
 func main() {
 	args, err := parseArgs()
 	if err != nil {
@@ -126,36 +223,10 @@ func main() {
 	if err != nil {
 		log.Fatalln("Output client creating error", err)
 	}
-
-	sync := synchronizer.NewOneWay(input, output, synchronizer.OneWayOpt{
-		IndirectUpload:         true,
-		IgnoreExisting:         true,
-		AllowDelete:            false,
-		SingleThreadedFileSize: 64 * 1024 * 1024,
-		WriteThreads:           8,
-		WriteRetry:             2,
-		WriteRetryDelay:        30 * time.Second,
-		WriteCheckTimeout:      30 * time.Minute,
-		WriteCheckDelay:        10 * time.Second,
-	})
-
-	errors := make(chan error)
-	go listenErrors(errors)
-
-	sync.Sync(errors)
+	err = sync(input, output, args.syncConfig)
+	if err != nil {
+		log.Fatalln("Sync error", err)
+	}
 
 	log.Println("\n\nDone.")
-}
-
-func listenErrors(errors <-chan error) {
-	log.Println("Listening for errors...")
-	for {
-		select {
-		case err, ok := <-errors:
-			if !ok {
-				return
-			}
-			log.Println("!!! ERROR", err)
-		}
-	}
 }
