@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/io-developer/go-davsync/pkg/client"
-	"github.com/io-developer/go-davsync/pkg/client/fs"
+	"github.com/io-developer/go-davsync/pkg/client/local"
 	"github.com/io-developer/go-davsync/pkg/client/webdav"
 	"github.com/io-developer/go-davsync/pkg/client/yadiskrest"
 	"github.com/io-developer/go-davsync/pkg/synchronizer"
@@ -32,10 +32,11 @@ type Args struct {
 
 // ClientConfig of input/output
 type ClientConfig struct {
-	BaseDir    string
-	Type       ClientType
-	Webdav     webdav.Options
-	YadiskRest yadiskrest.Options
+	BaseDir           string
+	Type              ClientType
+	LocalOptions      local.Options
+	WebdavOptions     webdav.Options
+	YadiskRestOptions yadiskrest.Options
 }
 
 // ClientType ..
@@ -109,31 +110,44 @@ func parseClientConfig(path string, defBaseDir string) (conf ClientConfig, err e
 	if conf.Type == ClientType("") {
 		conf.Type = ClientTypeLocal
 	}
-	if conf.Webdav.BaseDir == "" {
-		conf.Webdav.BaseDir = conf.BaseDir
+
+	if conf.LocalOptions.BaseDir == "" {
+		conf.LocalOptions.BaseDir = conf.BaseDir
 	}
-	if conf.YadiskRest.BaseDir == "" {
-		conf.YadiskRest.BaseDir = conf.BaseDir
+	if conf.LocalOptions.FileMode == 0 {
+		conf.LocalOptions.FileMode = 0644
 	}
-	if conf.YadiskRest.ApiUri == "" {
-		conf.YadiskRest.ApiUri = "https://cloud-api.yandex.net/v1/disk"
+	if conf.LocalOptions.DirMode == 0 {
+		conf.LocalOptions.DirMode = 0755
 	}
+
+	if conf.WebdavOptions.BaseDir == "" {
+		conf.WebdavOptions.BaseDir = conf.BaseDir
+	}
+
+	if conf.YadiskRestOptions.BaseDir == "" {
+		conf.YadiskRestOptions.BaseDir = conf.BaseDir
+	}
+	if conf.YadiskRestOptions.ApiUri == "" {
+		conf.YadiskRestOptions.ApiUri = "https://cloud-api.yandex.net/v1/disk"
+	}
+
 	return
 }
 
 func createClient(conf ClientConfig) (client.Client, error) {
 	if conf.Type == ClientTypeLocal {
-		return fs.NewClient(conf.BaseDir), nil
+		return local.NewClient(conf.LocalOptions), nil
 	}
 	if conf.Type == ClientTypeWebdav {
-		return webdav.NewClient(conf.Webdav), nil
+		return webdav.NewClient(conf.WebdavOptions), nil
 	}
 	if conf.Type == ClientTypeYadiskRest {
-		return yadiskrest.NewClient(conf.YadiskRest), nil
+		return yadiskrest.NewClient(conf.YadiskRestOptions), nil
 	}
 	if conf.Type == ClientTypeYadisk {
-		rest := yadiskrest.NewClient(conf.YadiskRest)
-		dav := webdav.NewClient(conf.Webdav)
+		rest := yadiskrest.NewClient(conf.YadiskRestOptions)
+		dav := webdav.NewClient(conf.WebdavOptions)
 		dav.SetTree(rest)
 		return dav, nil
 	}
@@ -160,7 +174,7 @@ func parseSyncConfig(path string, defType SyncType) (conf SyncConfig, err error)
 				IgnoreExisting:         true,
 				AllowDelete:            false,
 				SingleThreadedFileSize: 64 * 1024 * 1024,
-				WriteThreads:           8,
+				WriteThreads:           4,
 				WriteRetry:             2,
 				WriteRetryDelay:        30 * time.Second,
 				WriteCheckTimeout:      30 * time.Minute,
