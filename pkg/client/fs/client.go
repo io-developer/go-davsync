@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/io-developer/go-davsync/pkg/client"
+	"github.com/io-developer/go-davsync/pkg/util"
 )
 
 type Client struct {
@@ -83,7 +84,7 @@ func (c *Client) WriteFile(path string, content io.ReadCloser, size int64) error
 }
 
 func (c *Client) toResource(absPath string, info os.FileInfo) client.Resource {
-	absPath = client.PathNormalize(absPath, info.IsDir())
+	absPath = util.PathNormalize(absPath, info.IsDir())
 	path := strings.TrimPrefix(absPath, strings.TrimRight(c.BaseDir, "/"))
 	return client.Resource{
 		AbsPath:  absPath,

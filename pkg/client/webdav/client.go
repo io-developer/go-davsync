@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/io-developer/go-davsync/pkg/client"
+	"github.com/io-developer/go-davsync/pkg/util"
 )
 
 type Client struct {
@@ -84,7 +85,7 @@ func (c *Client) makeDirRecursive(absPath string) error {
 }
 
 func (c *Client) makeDir(absPath string) (code int, err error) {
-	absPath = client.PathNormalize(absPath, true)
+	absPath = util.PathNormalize(absPath, true)
 	_, parents, err := c.tree.ReadParents()
 	if _, exists := parents[absPath]; exists {
 		return 200, nil

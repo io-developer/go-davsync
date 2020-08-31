@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/io-developer/go-davsync/pkg/client"
+	"github.com/io-developer/go-davsync/pkg/util"
 )
 
 type PropfindSome struct {
@@ -39,7 +40,7 @@ func (p *Propfind) GetHrefUnicode() string {
 }
 
 func (p *Propfind) GetNormalizedAbsPath() string {
-	return client.PathNormalize(p.GetHrefUnicode(), p.IsCollection())
+	return util.PathNormalize(p.GetHrefUnicode(), p.IsCollection())
 }
 
 func (p *Propfind) ToResource(path string) client.Resource {

@@ -1,4 +1,4 @@
-package model
+package synchronizer
 
 import (
 	"crypto"
@@ -12,9 +12,10 @@ import (
 	"time"
 
 	"github.com/io-developer/go-davsync/pkg/client"
+	"github.com/io-developer/go-davsync/pkg/util"
 )
 
-type Sync1WayOpt struct {
+type OneWayOpt struct {
 	IgnoreExisting         bool
 	IndirectUpload         bool
 	UploadPathFormat       string
@@ -27,10 +28,10 @@ type Sync1WayOpt struct {
 	WriteCheckDelay        time.Duration
 }
 
-type Sync1Way struct {
+type OneWay struct {
 	src client.Client
 	dst client.Client
-	opt Sync1WayOpt
+	opt OneWayOpt
 
 	// sync-time data
 	srcPaths     []string
@@ -46,7 +47,7 @@ type Sync1Way struct {
 	signleWriteMutex sync.Mutex
 }
 
-func NewSync1Way(src, dst client.Client, opt Sync1WayOpt) *Sync1Way {
+func NewOneWay(src, dst client.Client, opt OneWayOpt) *OneWay {
 	if opt.UploadPathFormat == "" {
 		opt.UploadPathFormat = "/ucam-%x.bin"
 	}
@@ -62,7 +63,7 @@ func NewSync1Way(src, dst client.Client, opt Sync1WayOpt) *Sync1Way {
 	if opt.WriteCheckDelay < time.Second {
 		opt.WriteCheckDelay = time.Second
 	}
-	return &Sync1Way{
+	return &OneWay{
 		src:              src,
 		dst:              dst,
 		opt:              opt,
@@ -70,7 +71,7 @@ func NewSync1Way(src, dst client.Client, opt Sync1WayOpt) *Sync1Way {
 	}
 }
 
-func (s *Sync1Way) Sync(errors chan<- error) {
+func (s *OneWay) Sync(errors chan<- error) {
 	s.readTrees(errors)
 	s.logTrees()
 
@@ -79,11 +80,11 @@ func (s *Sync1Way) Sync(errors chan<- error) {
 	s.writeFiles(errors)
 }
 
-func (s *Sync1Way) log(msg string) {
+func (s *OneWay) log(msg string) {
 	log.Printf("Sync: %s\n", msg)
 }
 
-func (s *Sync1Way) readTrees(errors chan<- error) {
+func (s *OneWay) readTrees(errors chan<- error) {
 	group := sync.WaitGroup{}
 	group.Add(2)
 	go func() {
@@ -105,7 +106,7 @@ func (s *Sync1Way) readTrees(errors chan<- error) {
 	group.Wait()
 }
 
-func (s *Sync1Way) logTrees() {
+func (s *OneWay) logTrees() {
 	s.log("")
 	s.log("Source paths:")
 	for _, path := range s.srcPaths {
@@ -121,7 +122,7 @@ func (s *Sync1Way) logTrees() {
 	s.log("")
 }
 
-func (s *Sync1Way) diff() {
+func (s *OneWay) diff() {
 	s.log("Comparing trees...")
 
 	from := []string{}
@@ -146,7 +147,7 @@ func (s *Sync1Way) diff() {
 	}
 }
 
-func (s *Sync1Way) makeDirs(errors chan<- error) {
+func (s *OneWay) makeDirs(errors chan<- error) {
 	s.log("Making dirs...")
 
 	bothPathDirs := getSortedDirs(s.bothPaths)
@@ -164,7 +165,7 @@ func (s *Sync1Way) makeDirs(errors chan<- error) {
 	}
 }
 
-func (s *Sync1Way) writeFiles(errors chan<- error) {
+func (s *OneWay) writeFiles(errors chan<- error) {
 	total := 0
 	handled := 0
 	logMain := func(msg string) {
@@ -249,14 +250,14 @@ func (s *Sync1Way) writeFiles(errors chan<- error) {
 	logMain("Write files complete")
 }
 
-func (s *Sync1Way) isSingleThreadWriteNeeded(res client.Resource) bool {
+func (s *OneWay) isSingleThreadWriteNeeded(res client.Resource) bool {
 	if s.opt.SingleThreadedFileSize <= 0 {
 		return false
 	}
 	return res.Size > s.opt.SingleThreadedFileSize
 }
 
-func (s *Sync1Way) writeFile(path string, res client.Resource, logFn func(string)) error {
+func (s *OneWay) writeFile(path string, res client.Resource, logFn func(string)) error {
 	s.signleWriteMutex.Lock()
 	isSingleThreaded := s.isSingleThreadWriteNeeded(res)
 	if isSingleThreaded {
@@ -272,7 +273,7 @@ func (s *Sync1Way) writeFile(path string, res client.Resource, logFn func(string
 	if err != nil {
 		return err
 	}
-	readProgress := NewReadProgress(reader, res.Size)
+	readProgress := util.NewRead(reader, res.Size)
 	readProgress.SetLogFn(logFn)
 
 	err = s.dst.WriteFile(uploadPath, readProgress, res.Size)
@@ -312,10 +313,10 @@ func (s *Sync1Way) writeFile(path string, res client.Resource, logFn func(string
 	return nil
 }
 
-func (s *Sync1Way) checkWritten(
+func (s *OneWay) checkWritten(
 	path string,
 	res client.Resource,
-	r *ReadProgress,
+	r *util.Reader,
 	logFn func(string),
 ) (err error) {
 	if !r.IsComplete() {
@@ -323,8 +324,8 @@ func (s *Sync1Way) checkWritten(
 			"File not written. Stopped at %d of %d (%s / %s)",
 			r.GetBytesRead(),
 			r.GetBytesTotal(),
-			FormatBytes(r.GetBytesRead()),
-			FormatBytes(r.GetBytesTotal()),
+			util.FormatBytes(r.GetBytesRead()),
+			util.FormatBytes(r.GetBytesTotal()),
 		)
 	}
 	timeout := s.opt.WriteCheckTimeout
@@ -352,10 +353,10 @@ func (s *Sync1Way) checkWritten(
 	return fmt.Errorf("File written but not found atfer timeout %s", timeout.String())
 }
 
-func (s *Sync1Way) checkWrittenRes(
+func (s *OneWay) checkWrittenRes(
 	path string,
 	src, written client.Resource,
-	r *ReadProgress,
+	r *util.Reader,
 	logFn func(string),
 ) (err error) {
 	if written.HashSha256 != "" {
@@ -392,7 +393,7 @@ func (s *Sync1Way) checkWrittenRes(
 		logFn("Check OK: MD5 matched")
 		return nil
 	}
-	if written.Size == src.Size && src.Size == r.bytesRead {
+	if written.Size == src.Size && src.Size == r.GetBytesRead() {
 		logFn("Check OK: size matched")
 		return nil
 	}
@@ -405,7 +406,7 @@ func (s *Sync1Way) checkWrittenRes(
 	)
 }
 
-func (s *Sync1Way) getUploadPath(path string, res client.Resource, indirect bool) string {
+func (s *OneWay) getUploadPath(path string, res client.Resource, indirect bool) string {
 	if !indirect {
 		return path
 	}

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/io-developer/go-davsync/pkg/client"
+	"github.com/io-developer/go-davsync/pkg/util"
 )
 
 type Resources struct {
@@ -36,7 +37,7 @@ func (r Resource) IsDir() bool {
 
 func (r Resource) GetNormalizedAbsPath() string {
 	absPath := strings.TrimPrefix(r.Path, "disk:")
-	return client.PathNormalize(absPath, r.IsDir())
+	return util.PathNormalize(absPath, r.IsDir())
 }
 
 func (r Resource) ToResource(path string) client.Resource {

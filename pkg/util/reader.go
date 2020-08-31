@@ -1,4 +1,4 @@
-package model
+package util
 
 import (
 	"crypto"
@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-type ReadProgress struct {
+type Reader struct {
 	io.ReadCloser
 
 	LogInterval time.Duration
@@ -23,8 +23,8 @@ type ReadProgress struct {
 	sha256      hash.Hash
 }
 
-func NewReadProgress(r io.ReadCloser, len int64) *ReadProgress {
-	return &ReadProgress{
+func NewRead(r io.ReadCloser, len int64) *Reader {
+	return &Reader{
 		reader:      r,
 		bytesTotal:  len,
 		bytesRead:   0,
@@ -36,34 +36,34 @@ func NewReadProgress(r io.ReadCloser, len int64) *ReadProgress {
 	}
 }
 
-func (r *ReadProgress) IsComplete() bool {
+func (r *Reader) IsComplete() bool {
 	return r.isComplete
 }
 
-func (r *ReadProgress) GetBytesRead() int64 {
+func (r *Reader) GetBytesRead() int64 {
 	return r.bytesRead
 }
 
-func (r *ReadProgress) GetBytesTotal() int64 {
+func (r *Reader) GetBytesTotal() int64 {
 	return r.bytesTotal
 }
 
-func (r *ReadProgress) GetProgress() float64 {
+func (r *Reader) GetProgress() float64 {
 	if r.bytesTotal <= 0 || r.bytesRead <= 0 {
 		return 0
 	}
 	return float64(r.bytesRead) / float64(r.bytesTotal)
 }
 
-func (r *ReadProgress) GetHashMd5() string {
+func (r *Reader) GetHashMd5() string {
 	return fmt.Sprintf("%x", r.md5.Sum(nil))
 }
 
-func (r *ReadProgress) GetHashSha256() string {
+func (r *Reader) GetHashSha256() string {
 	return fmt.Sprintf("%x", r.sha256.Sum(nil))
 }
 
-func (r *ReadProgress) Read(p []byte) (n int, err error) {
+func (r *Reader) Read(p []byte) (n int, err error) {
 	n, err = r.reader.Read(p)
 	r.bytesRead += int64(n)
 	r.updateHash(p, n)
@@ -79,7 +79,7 @@ func (r *ReadProgress) Read(p []byte) (n int, err error) {
 	return
 }
 
-func (r *ReadProgress) updateHash(p []byte, n int) error {
+func (r *Reader) updateHash(p []byte, n int) error {
 	if n < 1 {
 		return nil
 	}
@@ -106,11 +106,11 @@ func (r *ReadProgress) updateHash(p []byte, n int) error {
 	return nil
 }
 
-func (r *ReadProgress) SetLogFn(f func(string)) {
+func (r *Reader) SetLogFn(f func(string)) {
 	r.logFn = f
 }
 
-func (r *ReadProgress) Log(force bool) {
+func (r *Reader) Log(force bool) {
 	if r.logFn == nil {
 		return
 	}
@@ -126,23 +126,6 @@ func (r *ReadProgress) Log(force bool) {
 	}
 }
 
-func (r *ReadProgress) Close() error {
+func (r *Reader) Close() error {
 	return r.reader.Close()
-}
-
-func FormatBytes(size int64) string {
-	if size < 1024 {
-		return fmt.Sprintf("%d B", size)
-	}
-	rest := size
-	mul := uint64(1)
-	exp := uint64(0)
-	for (rest >> 10) > 0 {
-		rest = rest >> 10
-		mul = mul << 10
-		exp++
-	}
-	val := float64(size) / float64(mul)
-	suffixes := []string{"B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB"}
-	return fmt.Sprintf("%.1f %s", val, suffixes[exp])
 }

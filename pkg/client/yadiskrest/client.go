@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/io-developer/go-davsync/pkg/client"
+	"github.com/io-developer/go-davsync/pkg/util"
 )
 
 type Client struct {
@@ -290,7 +291,7 @@ func (c *Client) appendTree(item Resource) {
 		c.treeItemPaths = append(c.treeItemPaths, path)
 
 		// add missing dirs
-		for _, dirPath := range client.PathParents(path) {
+		for _, dirPath := range util.PathParents(path) {
 			if _, exists := c.treeItems[dirPath]; exists {
 				continue
 			}
@@ -301,7 +302,7 @@ func (c *Client) appendTree(item Resource) {
 	}
 
 	// add missing parents
-	for _, parentAbsPath := range client.PathParents(absPath) {
+	for _, parentAbsPath := range util.PathParents(absPath) {
 		if _, exists := c.treeParents[parentAbsPath]; exists {
 			continue
 		}

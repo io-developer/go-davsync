@@ -1,6 +1,8 @@
 package yadiskrest
 
-import "github.com/io-developer/go-davsync/pkg/client"
+import (
+	"github.com/io-developer/go-davsync/pkg/util"
+)
 
 type Options struct {
 	BaseDir       string
@@ -12,13 +14,13 @@ type Options struct {
 }
 
 func (o *Options) getBaseDir() string {
-	return client.PathNormalizeBaseDir(o.BaseDir)
+	return util.PathNormalizeBaseDir(o.BaseDir)
 }
 
 func (o *Options) toRelPath(absPath string) string {
-	return client.PathRel(absPath, o.BaseDir)
+	return util.PathRel(absPath, o.BaseDir)
 }
 
 func (o *Options) toAbsPath(relPath string) string {
-	return client.PathAbs(relPath, o.BaseDir)
+	return util.PathAbs(relPath, o.BaseDir)
 }

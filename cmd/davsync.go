@@ -11,7 +11,7 @@ import (
 	"github.com/io-developer/go-davsync/pkg/client/fs"
 	"github.com/io-developer/go-davsync/pkg/client/webdav"
 	"github.com/io-developer/go-davsync/pkg/client/yadiskrest"
-	"github.com/io-developer/go-davsync/pkg/model"
+	"github.com/io-developer/go-davsync/pkg/synchronizer"
 )
 
 type Args struct {
@@ -65,8 +65,8 @@ func createSrcClient(args Args) *fs.Client {
 }
 
 func createDstClient(args Args) client.Client {
-	//return createDavClient(args)
-	return createYadiskClient(args)
+	return createDavClient(args)
+	//return createYadiskClient(args)
 }
 
 func createFsClient(args Args) *fs.Client {
@@ -106,7 +106,7 @@ func main() {
 	src := createSrcClient(args)
 	dst := createDstClient(args)
 
-	sync := model.NewSync1Way(src, dst, model.Sync1WayOpt{
+	sync := synchronizer.NewOneWay(src, dst, synchronizer.OneWayOpt{
 		IndirectUpload:         true,
 		IgnoreExisting:         true,
 		AllowDelete:            false,
