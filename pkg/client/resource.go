@@ -1,6 +1,9 @@
 package client
 
-import "os"
+import (
+	"os"
+	"time"
+)
 
 type Resource struct {
 	Name       string
@@ -8,6 +11,7 @@ type Resource struct {
 	AbsPath    string
 	IsDir      bool
 	Size       int64
+	ModTime    time.Time
 	HashETag   string
 	HashMd5    string
 	HashSha256 string

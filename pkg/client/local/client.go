@@ -89,6 +89,7 @@ func (c *Client) toResource(absPath string, info os.FileInfo) client.Resource {
 		Name:     info.Name(),
 		IsDir:    info.IsDir(),
 		Size:     info.Size(),
+		ModTime:  info.ModTime(),
 		UserData: info,
 	}
 }

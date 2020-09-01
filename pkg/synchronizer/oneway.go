@@ -111,6 +111,8 @@ func (s *OneWay) logTrees() {
 	s.log("Source paths:")
 	for _, path := range s.srcPaths {
 		s.log(path)
+		res := s.srcResources[path]
+		s.log(fmt.Sprintf("ModTime: %s", res.ModTime.Format("2006-01-02 15:04:05 -0700")))
 	}
 	s.log("")
 
@@ -118,6 +120,8 @@ func (s *OneWay) logTrees() {
 	s.log("Destination paths:")
 	for _, path := range s.dstPaths {
 		s.log(path)
+		res := s.dstNodes[path]
+		s.log(fmt.Sprintf("ModTime: %s", res.ModTime.Format("2006-01-02 15:04:05 -0700")))
 	}
 	s.log("")
 }

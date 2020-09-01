@@ -225,17 +225,17 @@ func syncOnewWay(input, output client.Client, conf SyncConfig) error {
 func main() {
 	args, err := parseArgs()
 	if err != nil {
-		log.Fatalln("Error at paring cli args", err)
+		log.Fatalln("Error at cli args parsing", err)
 	}
 	log.Printf("CLI ARGS:\n%#v\n\n", args)
 
 	input, err := createClient(args.inputConfig)
 	if err != nil {
-		log.Fatalln("Input client creating error", err)
+		log.Fatalln("Input client creation error", err)
 	}
 	output, err := createClient(args.outputConfig)
 	if err != nil {
-		log.Fatalln("Output client creating error", err)
+		log.Fatalln("Output client creation error", err)
 	}
 	err = sync(input, output, args.syncConfig)
 	if err != nil {

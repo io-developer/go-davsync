@@ -43,6 +43,13 @@ func (p *Propfind) GetNormalizedAbsPath() string {
 	return util.PathNormalize(p.GetHrefUnicode(), p.IsCollection())
 }
 
+func (p *Propfind) GetModTime() time.Time {
+	if p.LastModified.Unix() == 0 {
+		return p.CreationDate.Time
+	}
+	return p.LastModified.Time
+}
+
 func (p *Propfind) ToResource(path string) client.Resource {
 	return client.Resource{
 		Path:     path,
@@ -50,6 +57,7 @@ func (p *Propfind) ToResource(path string) client.Resource {
 		Name:     p.DisplayName,
 		IsDir:    p.IsCollection(),
 		Size:     p.ContentLength,
+		ModTime:  p.GetModTime(),
 		HashETag: p.Etag,
 		UserData: p,
 	}
