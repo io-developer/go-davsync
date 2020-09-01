@@ -81,6 +81,10 @@ func (c *Client) MoveFile(srcPath, dstPath string) error {
 	return os.Rename(c.opt.toAbsPath(srcPath), c.opt.toAbsPath(dstPath))
 }
 
+func (c *Client) DeleteFile(path string) error {
+	return os.Remove(c.opt.toAbsPath(path))
+}
+
 func (c *Client) toResource(absPath string, info os.FileInfo) client.Resource {
 	absPath = util.PathNormalize(absPath, info.IsDir())
 	return client.Resource{

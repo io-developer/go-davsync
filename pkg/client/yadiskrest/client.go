@@ -242,6 +242,29 @@ func (c *Client) MoveFile(srcPath, dstPath string) error {
 	return fmt.Errorf("Unexpected MoveFile (MOVE) code: %d", code)
 }
 
+func (c *Client) DeleteFile(path string) error {
+	permanently := "false"
+	if c.opt.DeletePermanent {
+		permanently = "true"
+	}
+	req, err := c.createRequest("DELETE", "/resources", url.Values{
+		"path":        []string{c.opt.toAbsPath(path)},
+		"permanently": []string{permanently},
+	}, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.sendRequest(req)
+	if err != nil {
+		return err
+	}
+	code := resp.StatusCode
+	if code >= 200 && code < 300 {
+		return nil
+	}
+	return fmt.Errorf("Unexpected DeleteFile (DELETE) code: %d", code)
+}
+
 func (c *Client) readTree() error {
 	if c.treeItems != nil {
 		return nil

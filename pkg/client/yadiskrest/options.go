@@ -5,12 +5,13 @@ import (
 )
 
 type Options struct {
-	BaseDir       string
-	ApiUri        string
-	AuthToken     string
-	AuthTokenType string
-	AuthUser      string
-	AuthPass      string
+	BaseDir         string
+	ApiUri          string
+	AuthToken       string
+	AuthTokenType   string
+	AuthUser        string
+	AuthPass        string
+	DeletePermanent bool
 }
 
 func (o *Options) getBaseDir() string {

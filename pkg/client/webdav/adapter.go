@@ -197,3 +197,16 @@ func (c *Adapter) MoveFile(srcPath, dstPath string) (code int, err error) {
 	code = resp.StatusCode
 	return
 }
+
+func (c *Adapter) DeleteFile(path string) (code int, err error) {
+	req, err := c.createRequest("DELETE", path, nil, map[string]string{})
+	if err != nil {
+		return
+	}
+	resp, err := c.request(req)
+	if err != nil {
+		return
+	}
+	code = resp.StatusCode
+	return
+}

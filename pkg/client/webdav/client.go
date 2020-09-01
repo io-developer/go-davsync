@@ -144,3 +144,14 @@ func (c *Client) MoveFile(srcPath, dstPath string) error {
 	}
 	return fmt.Errorf("Webdav MoveFile (MOVE) code: %d", code)
 }
+
+func (c *Client) DeleteFile(path string) error {
+	code, err := c.adapter.DeleteFile(c.opt.toAbsPath(path))
+	if err != nil {
+		return err
+	}
+	if code >= 200 && code < 300 {
+		return nil
+	}
+	return fmt.Errorf("Webdav DeleteFile (DELETE) code: %d", code)
+}

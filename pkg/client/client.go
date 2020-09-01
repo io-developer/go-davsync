@@ -11,4 +11,5 @@ type Client interface {
 	ReadFile(path string) (reader io.ReadCloser, err error)
 	WriteFile(path string, content io.ReadCloser, size int64) error
 	MoveFile(srcPath, dstPath string) error
+	DeleteFile(path string) error
 }
