@@ -21,9 +21,9 @@ type OneWayOpt struct {
 	UploadPathFormat       string
 	AllowDelete            bool
 	SingleThreadedFileSize int64
-	WriteThreads           uint
-	WriteRetry             uint
-	WriteRetryDelay        time.Duration
+	ThreadCount            uint
+	AttemptMax             uint
+	AttemptDelay           time.Duration
 	WriteCheckTimeout      time.Duration
 	WriteCheckDelay        time.Duration
 }
@@ -37,8 +37,8 @@ type OneWay struct {
 	srcPaths     []string
 	srcResources map[string]client.Resource
 
-	dstPaths []string
-	dstNodes map[string]client.Resource
+	dstPaths     []string
+	dstResources map[string]client.Resource
 
 	bothPaths []string
 	addPaths  []string
@@ -51,11 +51,11 @@ func NewOneWay(src, dst client.Client, opt OneWayOpt) *OneWay {
 	if opt.UploadPathFormat == "" {
 		opt.UploadPathFormat = "/ucam-%x.bin"
 	}
-	if opt.WriteThreads < 1 {
-		opt.WriteThreads = 1
+	if opt.ThreadCount < 1 {
+		opt.ThreadCount = 1
 	}
-	if opt.WriteRetry < 1 {
-		opt.WriteRetry = 1
+	if opt.AttemptMax < 1 {
+		opt.AttemptMax = 1
 	}
 	if opt.WriteCheckTimeout < time.Second {
 		opt.WriteCheckTimeout = time.Second
@@ -78,6 +78,7 @@ func (s *OneWay) Sync(errors chan<- error) {
 	s.diff()
 	s.makeDirs(errors)
 	s.writeFiles(errors)
+	s.deleteFiles(errors)
 }
 
 func (s *OneWay) log(msg string) {
@@ -97,7 +98,7 @@ func (s *OneWay) readTrees(errors chan<- error) {
 	}()
 	go func() {
 		var err error
-		s.dstPaths, s.dstNodes, err = s.dst.ReadTree()
+		s.dstPaths, s.dstResources, err = s.dst.ReadTree()
 		if err != nil {
 			errors <- err
 		}
@@ -111,8 +112,8 @@ func (s *OneWay) logTrees() {
 	s.log("Source paths:")
 	for _, path := range s.srcPaths {
 		s.log(path)
-		res := s.srcResources[path]
-		s.log(fmt.Sprintf("ModTime: %s", res.ModTime.Format("2006-01-02 15:04:05 -0700")))
+		//	res := s.srcResources[path]
+		//	s.log(fmt.Sprintf("ModTime: %s", res.ModTime.Format("2006-01-02 15:04:05 -0700")))
 	}
 	s.log("")
 
@@ -120,8 +121,8 @@ func (s *OneWay) logTrees() {
 	s.log("Destination paths:")
 	for _, path := range s.dstPaths {
 		s.log(path)
-		res := s.dstNodes[path]
-		s.log(fmt.Sprintf("ModTime: %s", res.ModTime.Format("2006-01-02 15:04:05 -0700")))
+		//	res := s.dstNodes[path]
+		//	s.log(fmt.Sprintf("ModTime: %s", res.ModTime.Format("2006-01-02 15:04:05 -0700")))
 	}
 	s.log("")
 }
@@ -134,7 +135,7 @@ func (s *OneWay) diff() {
 		from = append(from, path)
 	}
 	to := []string{}
-	for path := range s.dstNodes {
+	for path := range s.dstResources {
 		to = append(to, path)
 	}
 	s.bothPaths, s.addPaths, s.delPaths = diff(from, to)
@@ -177,7 +178,7 @@ func (s *OneWay) writeFiles(errors chan<- error) {
 		if total > 0 {
 			progress = 100.0 * float64(handled) / float64(total)
 		}
-		s.log(fmt.Sprintf("%.2f%% (%d/%d): %s", progress, handled, total, msg))
+		s.log(fmt.Sprintf("W %.2f%% (%d/%d): %s", progress, handled, total, msg))
 	}
 
 	logMain("Writing files...")
@@ -219,14 +220,14 @@ func (s *OneWay) writeFiles(errors chan<- error) {
 				res := s.srcResources[path]
 
 				var writeErr error = nil
-				for i := uint(1); i <= s.opt.WriteRetry; i++ {
-					logThread(fmt.Sprintf("Try %d / %d", i, s.opt.WriteRetry))
+				for i := uint(1); i <= s.opt.AttemptMax; i++ {
+					logThread(fmt.Sprintf("Try %d / %d", i, s.opt.AttemptMax))
 					writeErr = s.writeFile(path, res, logThread)
 					if writeErr == nil {
 						break
 					}
-					logThread(fmt.Sprintf("Try %d / %d ERR: '%v'", i, s.opt.WriteRetry, writeErr))
-					time.Sleep(s.opt.WriteRetryDelay)
+					logThread(fmt.Sprintf("Try %d / %d ERR: '%v'", i, s.opt.AttemptMax, writeErr))
+					time.Sleep(s.opt.AttemptDelay)
 				}
 				if writeErr != nil {
 					logThread(fmt.Sprintf("ERROR '%v'", writeErr))
@@ -240,7 +241,7 @@ func (s *OneWay) writeFiles(errors chan<- error) {
 		}
 	}
 
-	for i := uint(0); i < s.opt.WriteThreads; i++ {
+	for i := uint(0); i < s.opt.ThreadCount; i++ {
 		group.Add(1)
 		go thread(i)
 	}
@@ -450,6 +451,93 @@ func (s *OneWay) getUploadPath(path string, res client.Resource, indirect bool) 
 	h := crypto.SHA256.New()
 	h.Write([]byte(sign))
 	return fmt.Sprintf(s.opt.UploadPathFormat, h.Sum(nil))
+}
+
+func (s *OneWay) deleteFiles(errors chan<- error) {
+	total := 0
+	handled := 0
+	logMain := func(msg string) {
+		progress := 0.0
+		if total > 0 {
+			progress = 100.0 * float64(handled) / float64(total)
+		}
+		s.log(fmt.Sprintf("D %.2f%% (%d/%d): %s", progress, handled, total, msg))
+	}
+
+	logMain("Deleting files...")
+	if !s.opt.AllowDelete {
+		logMain("Deleting disabled. Skipping..")
+		return
+	}
+	if len(s.delPaths) == 0 {
+		logMain("Nothing to delete")
+		return
+	}
+
+	preparedFilePaths := []string{}
+	for _, path := range s.delPaths {
+		if res, exists := s.dstResources[path]; exists && !res.IsDir {
+			preparedFilePaths = append(preparedFilePaths, path)
+		}
+	}
+	sort.Slice(preparedFilePaths, func(i, j int) bool {
+		return preparedFilePaths[i] < preparedFilePaths[j]
+	})
+	total = len(preparedFilePaths)
+
+	paths := make(chan string)
+	group := sync.WaitGroup{}
+
+	thread := func(id uint) {
+		curPath := "-"
+		logThread := func(msg string) {
+			logMain(fmt.Sprintf("[dthread %d] '%s': %s", id, curPath, msg))
+		}
+		logThread("Thread started")
+
+		for {
+			select {
+			case path, ok := <-paths:
+				if !ok {
+					logThread("Thread exited")
+					group.Done()
+					return
+				}
+				curPath = path
+				var delErr error = nil
+				for i := uint(1); i <= s.opt.AttemptMax; i++ {
+					logThread(fmt.Sprintf("Try %d / %d", i, s.opt.AttemptMax))
+					delErr = s.dst.DeleteFile(path)
+					if delErr == nil {
+						break
+					}
+					logThread(fmt.Sprintf("Try %d / %d ERR: '%v'", i, s.opt.AttemptMax, delErr))
+					time.Sleep(s.opt.AttemptDelay)
+				}
+				if delErr != nil {
+					logThread(fmt.Sprintf("ERROR '%v'", delErr))
+					errors <- delErr
+				} else {
+					logThread("Complete")
+				}
+				handled++
+				curPath = "-"
+			}
+		}
+	}
+
+	for i := uint(0); i < s.opt.ThreadCount; i++ {
+		group.Add(1)
+		go thread(i)
+	}
+	for _, path := range preparedFilePaths {
+		paths <- path
+	}
+	close(paths)
+
+	group.Wait()
+
+	logMain("Delete files complete")
 }
 
 func diff(from, to []string) (both, add, del []string) {
