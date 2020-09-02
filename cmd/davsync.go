@@ -28,7 +28,22 @@ type Args struct {
 	sync           string
 	syncConfig     SyncConfig
 	syncConfigFile string
+
+	// std sync flags
+	threads  uint
+	attempts uint
 }
+
+// ClientType ..
+type ClientType string
+
+// Client types
+const (
+	ClientTypeLocal      = ClientType("Local")
+	ClientTypeWebdav     = ClientType("Webdav")
+	ClientTypeYadiskRest = ClientType("YadiskRest")
+	ClientTypeYadisk     = ClientType("Yadisk")
+)
 
 // ClientConfig of input/output
 type ClientConfig struct {
@@ -39,15 +54,41 @@ type ClientConfig struct {
 	YadiskRestOptions yadiskrest.Options
 }
 
-// ClientType ..
-type ClientType string
+var defaultLocalOptions = local.Options{
+	DirMode:  0755,
+	FileMode: 0644,
+}
 
-// Known types
+var defaultWebdavOptions = webdav.Options{
+	AuthTokenType: "OAuth",
+}
+
+var defaultYadiskRestOptions = yadiskrest.Options{
+	ApiUri:          "https://cloud-api.yandex.net/v1/disk",
+	AuthTokenType:   "OAuth",
+	DeletePermanent: true,
+}
+
+var defaultInputClientConfig = ClientConfig{
+	Type:              ClientTypeLocal,
+	LocalOptions:      defaultLocalOptions,
+	WebdavOptions:     defaultWebdavOptions,
+	YadiskRestOptions: defaultYadiskRestOptions,
+}
+
+var defaultOutputClientConfig = ClientConfig{
+	Type:              ClientTypeWebdav,
+	LocalOptions:      defaultLocalOptions,
+	WebdavOptions:     defaultWebdavOptions,
+	YadiskRestOptions: defaultYadiskRestOptions,
+}
+
+// SyncType ..
+type SyncType string
+
+// Sync types
 const (
-	ClientTypeLocal      = ClientType("Local")
-	ClientTypeWebdav     = ClientType("Webdav")
-	ClientTypeYadiskRest = ClientType("YadiskRest")
-	ClientTypeYadisk     = ClientType("Yadisk")
+	SyncTypeOneWay = SyncType("OneWay")
 )
 
 // SyncConfig of sync
@@ -56,13 +97,20 @@ type SyncConfig struct {
 	OneWay synchronizer.OneWayOpt
 }
 
-// SyncType ..
-type SyncType string
-
-// Known types
-const (
-	SyncTypeOneWay = SyncType("OneWay")
-)
+var defaultSyncConfig = SyncConfig{
+	Type: SyncTypeOneWay,
+	OneWay: synchronizer.OneWayOpt{
+		IndirectUpload:         true,
+		IgnoreExisting:         true,
+		AllowDelete:            false,            // append-only mode by default
+		SingleThreadedFileSize: 64 * 1024 * 1024, // 64 MiB
+		ThreadCount:            4,
+		AttemptMax:             3,
+		AttemptDelay:           30 * time.Second,
+		WriteCheckDelay:        10 * time.Second,
+		WriteCheckTimeout:      30 * time.Minute,
+	},
+}
 
 func parseArgs() (args Args, err error) {
 	flag.StringVar(&args.input, "i", "./", "Default input directory path. Example: /tmp/test")
@@ -71,68 +119,72 @@ func parseArgs() (args Args, err error) {
 	flag.StringVar(&args.output, "o", "/", "Default output directory path. Example: /test")
 	flag.StringVar(&args.outputConfigFile, "oconf", ".davsync", "Output client config JSON file")
 
-	flag.StringVar(&args.sync, "t", "OneWay", "Default sync type")
-	flag.StringVar(&args.syncConfigFile, "tconf", "", "Sync config JSON file")
+	flag.UintVar(&args.threads, "threads", 4, "Max threads")
+	flag.UintVar(&args.attempts, "attempts", 3, "Max attempts")
+
+	flag.StringVar(&args.sync, "sync", "OneWay", "Default sync type")
+	flag.StringVar(&args.syncConfigFile, "syncConf", "", "Sync config JSON file")
 
 	flag.Parse()
 
-	args.inputConfig, err = parseClientConfig(args.inputConfigFile, args.input)
+	args.inputConfig = defaultInputClientConfig
+	err = parseClientConfig(args.inputConfigFile, &args.inputConfig, args.input)
 	if err != nil {
 		return
 	}
-	args.outputConfig, err = parseClientConfig(args.outputConfigFile, args.output)
+
+	args.outputConfig = defaultOutputClientConfig
+	err = parseClientConfig(args.outputConfigFile, &args.outputConfig, args.output)
 	if err != nil {
 		return
 	}
-	args.syncConfig, err = parseSyncConfig(args.syncConfigFile, SyncType(args.sync))
+
+	args.syncConfig = defaultSyncConfig
+	err = parseSyncConfig(args.syncConfigFile, &args.syncConfig, args)
 	if err != nil {
 		return
 	}
 	return
 }
 
-func parseClientConfig(path string, defBaseDir string) (conf ClientConfig, err error) {
+func parseClientConfig(path string, outConf *ClientConfig, baseDir string) error {
+	outConf.BaseDir = baseDir
+	outConf.LocalOptions.BaseDir = baseDir
+	outConf.WebdavOptions.BaseDir = baseDir
+	outConf.YadiskRestOptions.BaseDir = baseDir
+
 	if path != "" {
 		var bytes []byte
-		bytes, err = ioutil.ReadFile(path)
+		bytes, err := ioutil.ReadFile(path)
 		log.Println("parseClientConfig bytes", path, string(bytes))
 		if err != nil {
-			return
+			return err
 		}
-		err = json.Unmarshal(bytes, &conf)
+		err = json.Unmarshal(bytes, outConf)
 		if err != nil {
-			return
+			return err
 		}
 	}
-	if conf.BaseDir == "" {
-		conf.BaseDir = defBaseDir
-	}
-	if conf.Type == ClientType("") {
-		conf.Type = ClientTypeLocal
-	}
+	return nil
+}
 
-	if conf.LocalOptions.BaseDir == "" {
-		conf.LocalOptions.BaseDir = conf.BaseDir
-	}
-	if conf.LocalOptions.FileMode == 0 {
-		conf.LocalOptions.FileMode = 0644
-	}
-	if conf.LocalOptions.DirMode == 0 {
-		conf.LocalOptions.DirMode = 0755
-	}
+func parseSyncConfig(path string, outConf *SyncConfig, args Args) error {
+	outConf.OneWay.ThreadCount = args.threads
+	outConf.OneWay.AttemptMax = args.attempts
 
-	if conf.WebdavOptions.BaseDir == "" {
-		conf.WebdavOptions.BaseDir = conf.BaseDir
+	if path != "" {
+		var bytes []byte
+		bytes, err := ioutil.ReadFile(path)
+		log.Println("parseSyncConfig bytes", path, string(bytes))
+		if err != nil {
+			return err
+		}
+		err = json.Unmarshal(bytes, outConf)
+		if err != nil {
+			return err
+		}
 	}
-
-	if conf.YadiskRestOptions.BaseDir == "" {
-		conf.YadiskRestOptions.BaseDir = conf.BaseDir
-	}
-	if conf.YadiskRestOptions.ApiUri == "" {
-		conf.YadiskRestOptions.ApiUri = "https://cloud-api.yandex.net/v1/disk"
-	}
-
-	return
+	return nil
 }
 
 func createClient(conf ClientConfig) (client.Client, error) {
@@ -152,40 +204,6 @@ func createClient(conf ClientConfig) (client.Client, error) {
 		return dav, nil
 	}
 	return nil, fmt.Errorf("Unexpected client type '%s'", conf.Type)
-}
-
-func parseSyncConfig(path string, defType SyncType) (conf SyncConfig, err error) {
-	if path != "" {
-		var bytes []byte
-		bytes, err = ioutil.ReadFile(path)
-		log.Println("parseSyncConfig bytes", path, string(bytes))
-		if err != nil {
-			return
-		}
-		err = json.Unmarshal(bytes, &conf)
-		if err != nil {
-			return
-		}
-	} else {
-		conf = SyncConfig{
-			Type: defType,
-			OneWay: synchronizer.OneWayOpt{
-				IndirectUpload: true,
-				IgnoreExisting: true,
-				// AllowDelete: true,
-				SingleThreadedFileSize: 64 * 1024 * 1024,
-				ThreadCount:            4,
-				AttemptMax:             2,
-				AttemptDelay:           30 * time.Second,
-				WriteCheckTimeout:      30 * time.Minute,
-				WriteCheckDelay:        10 * time.Second,
-			},
-		}
-	}
-	if conf.Type == "" {
-		conf.Type = defType
-	}
-	return
 }
 
 func sync(input, output client.Client, conf SyncConfig) error {
