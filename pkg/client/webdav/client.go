@@ -36,6 +36,14 @@ func (c *Client) SetTree(t client.Tree) error {
 	return nil
 }
 
+func (c *Client) ToAbsPath(relPath string) string {
+	return c.opt.toAbsPath(relPath)
+}
+
+func (c *Client) ToRelativePath(absPath string) string {
+	return c.opt.toRelPath(absPath)
+}
+
 func (c *Client) ReadTreeParents() (absPaths []string, items map[string]client.Resource, err error) {
 	return c.tree.ReadParents()
 }

@@ -21,6 +21,14 @@ func NewClient(opt Options) *Client {
 	}
 }
 
+func (c *Client) ToAbsPath(relPath string) string {
+	return c.opt.toAbsPath(relPath)
+}
+
+func (c *Client) ToRelativePath(absPath string) string {
+	return c.opt.toRelPath(absPath)
+}
+
 func (c *Client) ReadParents() (absPaths []string, nodes map[string]client.Resource, err error) {
 	return
 }

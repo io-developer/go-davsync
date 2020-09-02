@@ -5,6 +5,9 @@ import "io"
 type Client interface {
 	Tree
 
+	ToAbsPath(relPath string) string
+	ToRelativePath(absPath string) string
+
 	MakeDir(path string, recursive bool) error
 	MakeDirFor(filePath string) error
 
