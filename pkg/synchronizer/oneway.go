@@ -3,11 +3,7 @@ package synchronizer
 import (
 	"crypto"
 	"fmt"
-	"io"
 	"log"
-	"net/url"
-	"regexp"
-	"sort"
 	"sync"
 	"time"
 
@@ -73,12 +69,14 @@ func NewOneWay(input, output client.Client, opt OneWayOpt) *OneWay {
 
 func (s *OneWay) Sync(errors chan<- error) {
 	s.readTrees(errors)
-	s.logTrees()
+	s.calcDiff()
 
-	s.diff()
 	s.makeDirs(errors)
-	s.uploadFiles(errors)
-	s.deleteFiles(errors)
+	s.handlePaths(s.addPaths, s.uploadFile, "UPL", errors)
+
+	if s.opt.AllowDelete {
+		s.handlePaths(s.delPaths, s.deleteOutputFile, "DEL", errors)
+	}
 }
 
 func (s *OneWay) log(msg string) {
@@ -107,27 +105,7 @@ func (s *OneWay) readTrees(errors chan<- error) {
 	group.Wait()
 }
 
-func (s *OneWay) logTrees() {
-	s.log("")
-	s.log("Input existing paths:")
-	for _, path := range s.inputPaths {
-		s.log(path)
-		//	res := s.srcResources[path]
-		//	s.log(fmt.Sprintf("ModTime: %s", res.ModTime.Format("2006-01-02 15:04:05 -0700")))
-	}
-	s.log("")
-
-	s.log("")
-	s.log("Output existing paths:")
-	for _, path := range s.outputPaths {
-		s.log(path)
-		//	res := s.dstNodes[path]
-		//	s.log(fmt.Sprintf("ModTime: %s", res.ModTime.Format("2006-01-02 15:04:05 -0700")))
-	}
-	s.log("")
-}
-
-func (s *OneWay) diff() {
+func (s *OneWay) calcDiff() {
 	s.log("Calculating input/output path diff...")
 
 	from := []string{}
@@ -138,7 +116,7 @@ func (s *OneWay) diff() {
 	for path := range s.outputResources {
 		to = append(to, path)
 	}
-	s.bothPaths, s.addPaths, s.delPaths = diff(from, to)
+	s.bothPaths, s.addPaths, s.delPaths = util.Diff(from, to)
 
 	s.log("Path diff:")
 	for _, path := range s.bothPaths {
@@ -155,10 +133,10 @@ func (s *OneWay) diff() {
 func (s *OneWay) makeDirs(errors chan<- error) {
 	s.log("Making dirs...")
 
-	bothPathDirs := getSortedDirs(s.bothPaths)
-	addPathDirs := getSortedDirs(s.addPaths)
-	_, addDirs, _ := diff(addPathDirs, bothPathDirs)
-	addDirs = getSortedDirs(addDirs)
+	bothPathDirs := util.PathSortedDirs(s.bothPaths)
+	addPathDirs := util.PathSortedDirs(s.addPaths)
+	_, addDirs, _ := util.Diff(addPathDirs, bothPathDirs)
+	addDirs = util.PathSortedDirs(addDirs)
 
 	for _, path := range addDirs {
 		s.log(fmt.Sprintf("  make dir %s", path))
@@ -170,7 +148,12 @@ func (s *OneWay) makeDirs(errors chan<- error) {
 	}
 }
 
-func (s *OneWay) uploadFiles(errors chan<- error) {
+func (s *OneWay) handlePaths(
+	paths []string,
+	handler func(path string, logFn func(msg string)) error,
+	logPrefix string,
+	errors chan<- error,
+) {
 	total := 0
 	handled := 0
 	logMain := func(msg string) {
@@ -178,60 +161,52 @@ func (s *OneWay) uploadFiles(errors chan<- error) {
 		if total > 0 {
 			progress = 100.0 * float64(handled) / float64(total)
 		}
-		s.log(fmt.Sprintf("U %.2f%% (%d/%d): %s", progress, handled, total, msg))
+		s.log(fmt.Sprintf("%s %.2f%% (%d/%d): %s", logPrefix, progress, handled, total, msg))
 	}
 
-	logMain("Uploading files...")
-	if len(s.addPaths) == 0 {
-		logMain("Nothing to upload")
+	logMain("Handling...")
+	if len(paths) == 0 {
+		logMain("Nothing to do")
 		return
 	}
 
-	preparedFilePaths := []string{}
-	for _, path := range s.addPaths {
-		if res, exists := s.inputResources[path]; exists && !res.IsDir {
-			preparedFilePaths = append(preparedFilePaths, path)
-		}
-	}
-	sort.Slice(preparedFilePaths, func(i, j int) bool {
-		return preparedFilePaths[i] < preparedFilePaths[j]
-	})
-	total = len(preparedFilePaths)
+	sortedPaths := util.PathSorted(paths)
+	total = len(sortedPaths)
 
-	paths := make(chan string)
+	pathsCh := make(chan string)
 	group := sync.WaitGroup{}
 
 	thread := func(id uint) {
 		curPath := "-"
 		logThread := func(msg string) {
-			logMain(fmt.Sprintf("[uthread %d] '%s': %s", id, curPath, msg))
+			logMain(fmt.Sprintf("[t%d] '%s': %s", id, curPath, msg))
 		}
 		logThread("Thread started")
 
 		for {
 			select {
-			case path, ok := <-paths:
+			case path, ok := <-pathsCh:
 				if !ok {
 					logThread("Thread exited")
 					group.Done()
 					return
 				}
 				curPath = path
-				res := s.inputResources[path]
-
-				var uploadErr error = nil
+				var handleErr error = nil
 				for i := uint(1); i <= s.opt.AttemptMax; i++ {
-					logThread(fmt.Sprintf("Try %d / %d", i, s.opt.AttemptMax))
-					uploadErr = s.uploadFile(path, res, logThread)
-					if uploadErr == nil {
+					if i > 1 || i == s.opt.AttemptMax {
+						logThread(fmt.Sprintf("Attempt %d / %d", i, s.opt.AttemptMax))
+					}
+					handleErr = handler(path, logThread)
+					if handleErr == nil {
 						break
 					}
-					logThread(fmt.Sprintf("Try %d / %d ERR: '%v'", i, s.opt.AttemptMax, uploadErr))
+					logThread(fmt.Sprintf("Attempt %d / %d ERR: '%v'", i, s.opt.AttemptMax, handleErr))
 					time.Sleep(s.opt.AttemptDelay)
 				}
-				if uploadErr != nil {
-					logThread(fmt.Sprintf("ERROR '%v'", uploadErr))
-					errors <- uploadErr
+				if handleErr != nil {
+					logThread(fmt.Sprintf("ERROR '%v'", handleErr))
+					errors <- handleErr
 				} else {
 					logThread("Complete")
 				}
@@ -245,24 +220,27 @@ func (s *OneWay) uploadFiles(errors chan<- error) {
 		group.Add(1)
 		go thread(i)
 	}
-	for _, path := range preparedFilePaths {
-		paths <- path
+	for _, path := range sortedPaths {
+		pathsCh <- path
 	}
-	close(paths)
+	close(pathsCh)
 
 	group.Wait()
 
-	logMain("Upload files complete")
+	logMain("Complete")
 }
 
-func (s *OneWay) isSingleThreadUploadNeeded(res client.Resource) bool {
-	if s.opt.SingleThreadedFileSize <= 0 {
-		return false
+func (s *OneWay) uploadFile(path string, logFn func(string)) error {
+	res, exists := s.inputResources[path]
+	if !exists {
+		logFn("Not exists. Skiping..")
+		return nil
 	}
-	return res.Size > s.opt.SingleThreadedFileSize
-}
+	if res.IsDir {
+		logFn("Direcory. Skiping..")
+		return nil
+	}
 
-func (s *OneWay) uploadFile(path string, res client.Resource, logFn func(string)) error {
 	isSingleThreadLocked := true
 	s.signleThreadUpload.Lock()
 
@@ -285,13 +263,13 @@ func (s *OneWay) uploadFile(path string, res client.Resource, logFn func(string)
 	uploadPath := s.getUploadPath(path, res, s.opt.IndirectUpload)
 	logFn(fmt.Sprintf("Uploading to '%s'", uploadPath))
 
-	srcReader, err := s.input.ReadFile(path)
+	inputReader, err := s.input.ReadFile(path)
 	if err != nil {
 		unlockIfNeeded()
 		return err
 	}
 
-	logReader := func(r *util.Reader) {
+	logRead := func(r *util.Reader) {
 		logFn(fmt.Sprintf(
 			"%.2f%% (%s / %s)",
 			100*r.GetProgress(),
@@ -302,15 +280,15 @@ func (s *OneWay) uploadFile(path string, res client.Resource, logFn func(string)
 	readerLogInterval := 2 * time.Second
 	readerLogLastTime := time.Now()
 
-	reader := util.NewRead(srcReader, res.Size)
+	reader := util.NewRead(inputReader, res.Size)
 	reader.OnProgress = func(r *util.Reader) {
 		if time.Now().Sub(readerLogLastTime) >= readerLogInterval {
 			readerLogLastTime = time.Now()
-			logReader(r)
+			logRead(r)
 		}
 	}
 	reader.OnComplete = func(r *util.Reader) {
-		logReader(r)
+		logRead(r)
 		unlockIfNeeded()
 	}
 
@@ -321,9 +299,9 @@ func (s *OneWay) uploadFile(path string, res client.Resource, logFn func(string)
 	reader.Close()
 
 	logFn(fmt.Sprintf("Reader IsComplete %t", reader.IsComplete()))
-	logFn(fmt.Sprintf("Reader err isErrEOF %t", isErrEOF(err)))
+	logFn(fmt.Sprintf("Reader err is EOF %t", util.ErrorIsEOF(err)))
 
-	if err != nil && !isErrEOF(err) {
+	if err != nil && !util.ErrorIsEOF(err) {
 		return err
 	}
 
@@ -346,6 +324,23 @@ func (s *OneWay) uploadFile(path string, res client.Resource, logFn func(string)
 	}
 
 	return nil
+}
+
+func (s *OneWay) isSingleThreadUploadNeeded(res client.Resource) bool {
+	if s.opt.SingleThreadedFileSize <= 0 {
+		return false
+	}
+	return res.Size > s.opt.SingleThreadedFileSize
+}
+
+func (s *OneWay) getUploadPath(path string, res client.Resource, indirect bool) string {
+	if !indirect {
+		return path
+	}
+	sign := fmt.Sprintf("%s:%d", path, res.Size)
+	h := crypto.SHA256.New()
+	h.Write([]byte(sign))
+	return fmt.Sprintf(s.opt.UploadPathFormat, h.Sum(nil))
 }
 
 func (s *OneWay) checkUploaded(
@@ -441,169 +436,15 @@ func (s *OneWay) checkUploadedRes(
 	)
 }
 
-func (s *OneWay) getUploadPath(path string, res client.Resource, indirect bool) string {
-	if !indirect {
-		return path
+func (s *OneWay) deleteOutputFile(path string, logFn func(string)) error {
+	res, exists := s.outputResources[path]
+	if !exists {
+		logFn("Not exists. Skiping..")
+		return nil
 	}
-	sign := fmt.Sprintf("%s:%d", path, res.Size)
-	h := crypto.SHA256.New()
-	h.Write([]byte(sign))
-	return fmt.Sprintf(s.opt.UploadPathFormat, h.Sum(nil))
-}
-
-func (s *OneWay) deleteFiles(errors chan<- error) {
-	total := 0
-	handled := 0
-	logMain := func(msg string) {
-		progress := 0.0
-		if total > 0 {
-			progress = 100.0 * float64(handled) / float64(total)
-		}
-		s.log(fmt.Sprintf("D %.2f%% (%d/%d): %s", progress, handled, total, msg))
+	if res.IsDir {
+		logFn("Direcory. Skiping..")
+		return nil
 	}
-
-	logMain("Deleting files...")
-	if !s.opt.AllowDelete {
-		logMain("Deleting disabled. Skipping..")
-		return
-	}
-	if len(s.delPaths) == 0 {
-		logMain("Nothing to delete")
-		return
-	}
-
-	preparedFilePaths := []string{}
-	for _, path := range s.delPaths {
-		if res, exists := s.outputResources[path]; exists && !res.IsDir {
-			preparedFilePaths = append(preparedFilePaths, path)
-		}
-	}
-	sort.Slice(preparedFilePaths, func(i, j int) bool {
-		return preparedFilePaths[i] < preparedFilePaths[j]
-	})
-	total = len(preparedFilePaths)
-
-	paths := make(chan string)
-	group := sync.WaitGroup{}
-
-	thread := func(id uint) {
-		curPath := "-"
-		logThread := func(msg string) {
-			logMain(fmt.Sprintf("[dthread %d] '%s': %s", id, curPath, msg))
-		}
-		logThread("Thread started")
-
-		for {
-			select {
-			case path, ok := <-paths:
-				if !ok {
-					logThread("Thread exited")
-					group.Done()
-					return
-				}
-				curPath = path
-				var delErr error = nil
-				for i := uint(1); i <= s.opt.AttemptMax; i++ {
-					logThread(fmt.Sprintf("Try %d / %d", i, s.opt.AttemptMax))
-					delErr = s.output.DeleteFile(path)
-					if delErr == nil {
-						break
-					}
-					logThread(fmt.Sprintf("Try %d / %d ERR: '%v'", i, s.opt.AttemptMax, delErr))
-					time.Sleep(s.opt.AttemptDelay)
-				}
-				if delErr != nil {
-					logThread(fmt.Sprintf("ERROR '%v'", delErr))
-					errors <- delErr
-				} else {
-					logThread("Complete")
-				}
-				handled++
-				curPath = "-"
-			}
-		}
-	}
-
-	for i := uint(0); i < s.opt.ThreadCount; i++ {
-		group.Add(1)
-		go thread(i)
-	}
-	for _, path := range preparedFilePaths {
-		paths <- path
-	}
-	close(paths)
-
-	group.Wait()
-
-	logMain("Delete files complete")
-}
-
-func diff(from, to []string) (both, add, del []string) {
-	both = []string{}
-	add = []string{}
-	del = []string{}
-	fromDict := map[string]bool{}
-	for _, path := range from {
-		fromDict[path] = true
-	}
-	toDict := map[string]bool{}
-	for _, path := range to {
-		toDict[path] = true
-	}
-	for _, path := range from {
-		if _, exists := toDict[path]; exists {
-			both = append(both, path)
-		} else {
-			add = append(add, path)
-		}
-	}
-	for _, path := range to {
-		if _, exists := fromDict[path]; !exists {
-			del = append(del, path)
-		}
-	}
-	return
-}
-
-func getSortedDirs(paths []string) []string {
-	re := regexp.MustCompile("^.*/")
-	dict := map[string]string{}
-	for _, p := range paths {
-		dir := re.FindString(p)
-		if dir != "" {
-			dict[dir] = dir
-		}
-	}
-	sorted := []string{}
-	for p := range dict {
-		sorted = append(sorted, p)
-	}
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i] < sorted[j]
-	})
-	return sorted
-}
-
-func isErrEOF(err error) bool {
-	if err == nil {
-		return false
-	}
-	if err == io.EOF {
-		fmt.Println("isErrEOF: io.EOF")
-		return true
-	}
-	if err.Error() == "EOF" {
-		fmt.Println("isErrEOF: 'EOF'")
-		return true
-	}
-	uerr, isURL := err.(*url.Error)
-	if isURL && uerr.Err == io.EOF {
-		fmt.Println("isErrEOF: isURL io.EOF")
-		return true
-	}
-	if isURL && uerr.Err.Error() == "EOF" {
-		fmt.Println("isErrEOF: isURL 'EOF'")
-		return true
-	}
-	return false
+	return s.output.DeleteFile(path)
 }

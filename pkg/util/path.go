@@ -2,6 +2,8 @@ package util
 
 import (
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -44,4 +46,34 @@ func PathParents(path string) []string {
 		parents = append(parents, parent)
 	}
 	return parents
+}
+
+func PathSorted(paths []string) []string {
+	sorted := []string{}
+	for _, p := range paths {
+		sorted = append(sorted, p)
+	}
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i] < sorted[j]
+	})
+	return sorted
+}
+
+func PathSortedDirs(paths []string) []string {
+	re := regexp.MustCompile("^.*/")
+	dict := map[string]string{}
+	for _, p := range paths {
+		dir := re.FindString(p)
+		if dir != "" {
+			dict[dir] = dir
+		}
+	}
+	sorted := []string{}
+	for p := range dict {
+		sorted = append(sorted, p)
+	}
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i] < sorted[j]
+	})
+	return sorted
 }
