@@ -24,30 +24,30 @@ type OneWayOpt struct {
 	ThreadCount            uint
 	AttemptMax             uint
 	AttemptDelay           time.Duration
-	WriteCheckTimeout      time.Duration
-	WriteCheckDelay        time.Duration
+	UploadCheckTimeout     time.Duration
+	UploadCheckDelay       time.Duration
 }
 
 type OneWay struct {
-	src client.Client
-	dst client.Client
-	opt OneWayOpt
+	input  client.Client
+	output client.Client
+	opt    OneWayOpt
 
 	// sync-time data
-	srcPaths     []string
-	srcResources map[string]client.Resource
+	inputPaths     []string
+	inputResources map[string]client.Resource
 
-	dstPaths     []string
-	dstResources map[string]client.Resource
+	outputPaths     []string
+	outputResources map[string]client.Resource
 
 	bothPaths []string
 	addPaths  []string
 	delPaths  []string
 
-	signleWriteMutex sync.Mutex
+	signleThreadUpload sync.Mutex
 }
 
-func NewOneWay(src, dst client.Client, opt OneWayOpt) *OneWay {
+func NewOneWay(input, output client.Client, opt OneWayOpt) *OneWay {
 	if opt.UploadPathFormat == "" {
 		opt.UploadPathFormat = "/ucam-%x.bin"
 	}
@@ -57,17 +57,17 @@ func NewOneWay(src, dst client.Client, opt OneWayOpt) *OneWay {
 	if opt.AttemptMax < 1 {
 		opt.AttemptMax = 1
 	}
-	if opt.WriteCheckTimeout < time.Second {
-		opt.WriteCheckTimeout = time.Second
+	if opt.UploadCheckTimeout < time.Second {
+		opt.UploadCheckTimeout = time.Second
 	}
-	if opt.WriteCheckDelay < time.Second {
-		opt.WriteCheckDelay = time.Second
+	if opt.UploadCheckDelay < time.Second {
+		opt.UploadCheckDelay = time.Second
 	}
 	return &OneWay{
-		src:              src,
-		dst:              dst,
-		opt:              opt,
-		signleWriteMutex: sync.Mutex{},
+		input:              input,
+		output:             output,
+		opt:                opt,
+		signleThreadUpload: sync.Mutex{},
 	}
 }
 
@@ -77,7 +77,7 @@ func (s *OneWay) Sync(errors chan<- error) {
 
 	s.diff()
 	s.makeDirs(errors)
-	s.writeFiles(errors)
+	s.uploadFiles(errors)
 	s.deleteFiles(errors)
 }
 
@@ -90,7 +90,7 @@ func (s *OneWay) readTrees(errors chan<- error) {
 	group.Add(2)
 	go func() {
 		var err error
-		s.srcPaths, s.srcResources, err = s.src.ReadTree()
+		s.inputPaths, s.inputResources, err = s.input.ReadTree()
 		if err != nil {
 			errors <- err
 		}
@@ -98,7 +98,7 @@ func (s *OneWay) readTrees(errors chan<- error) {
 	}()
 	go func() {
 		var err error
-		s.dstPaths, s.dstResources, err = s.dst.ReadTree()
+		s.outputPaths, s.outputResources, err = s.output.ReadTree()
 		if err != nil {
 			errors <- err
 		}
@@ -109,8 +109,8 @@ func (s *OneWay) readTrees(errors chan<- error) {
 
 func (s *OneWay) logTrees() {
 	s.log("")
-	s.log("Source paths:")
-	for _, path := range s.srcPaths {
+	s.log("Input existing paths:")
+	for _, path := range s.inputPaths {
 		s.log(path)
 		//	res := s.srcResources[path]
 		//	s.log(fmt.Sprintf("ModTime: %s", res.ModTime.Format("2006-01-02 15:04:05 -0700")))
@@ -118,8 +118,8 @@ func (s *OneWay) logTrees() {
 	s.log("")
 
 	s.log("")
-	s.log("Destination paths:")
-	for _, path := range s.dstPaths {
+	s.log("Output existing paths:")
+	for _, path := range s.outputPaths {
 		s.log(path)
 		//	res := s.dstNodes[path]
 		//	s.log(fmt.Sprintf("ModTime: %s", res.ModTime.Format("2006-01-02 15:04:05 -0700")))
@@ -128,19 +128,19 @@ func (s *OneWay) logTrees() {
 }
 
 func (s *OneWay) diff() {
-	s.log("Comparing trees...")
+	s.log("Calculating input/output path diff...")
 
 	from := []string{}
-	for path := range s.srcResources {
+	for path := range s.inputResources {
 		from = append(from, path)
 	}
 	to := []string{}
-	for path := range s.dstResources {
+	for path := range s.outputResources {
 		to = append(to, path)
 	}
 	s.bothPaths, s.addPaths, s.delPaths = diff(from, to)
 
-	s.log("Tree diff:")
+	s.log("Path diff:")
 	for _, path := range s.bothPaths {
 		s.log(fmt.Sprintf("BOTH %s", path))
 	}
@@ -163,14 +163,14 @@ func (s *OneWay) makeDirs(errors chan<- error) {
 	for _, path := range addDirs {
 		s.log(fmt.Sprintf("  make dir %s", path))
 
-		err := s.dst.MakeDir(path, true)
+		err := s.output.MakeDir(path, true)
 		if err != nil {
 			errors <- err
 		}
 	}
 }
 
-func (s *OneWay) writeFiles(errors chan<- error) {
+func (s *OneWay) uploadFiles(errors chan<- error) {
 	total := 0
 	handled := 0
 	logMain := func(msg string) {
@@ -178,18 +178,18 @@ func (s *OneWay) writeFiles(errors chan<- error) {
 		if total > 0 {
 			progress = 100.0 * float64(handled) / float64(total)
 		}
-		s.log(fmt.Sprintf("W %.2f%% (%d/%d): %s", progress, handled, total, msg))
+		s.log(fmt.Sprintf("U %.2f%% (%d/%d): %s", progress, handled, total, msg))
 	}
 
-	logMain("Writing files...")
+	logMain("Uploading files...")
 	if len(s.addPaths) == 0 {
-		logMain("Nothing to write")
+		logMain("Nothing to upload")
 		return
 	}
 
 	preparedFilePaths := []string{}
 	for _, path := range s.addPaths {
-		if res, exists := s.srcResources[path]; exists && !res.IsDir {
+		if res, exists := s.inputResources[path]; exists && !res.IsDir {
 			preparedFilePaths = append(preparedFilePaths, path)
 		}
 	}
@@ -204,7 +204,7 @@ func (s *OneWay) writeFiles(errors chan<- error) {
 	thread := func(id uint) {
 		curPath := "-"
 		logThread := func(msg string) {
-			logMain(fmt.Sprintf("[wthread %d] '%s': %s", id, curPath, msg))
+			logMain(fmt.Sprintf("[uthread %d] '%s': %s", id, curPath, msg))
 		}
 		logThread("Thread started")
 
@@ -217,21 +217,21 @@ func (s *OneWay) writeFiles(errors chan<- error) {
 					return
 				}
 				curPath = path
-				res := s.srcResources[path]
+				res := s.inputResources[path]
 
-				var writeErr error = nil
+				var uploadErr error = nil
 				for i := uint(1); i <= s.opt.AttemptMax; i++ {
 					logThread(fmt.Sprintf("Try %d / %d", i, s.opt.AttemptMax))
-					writeErr = s.writeFile(path, res, logThread)
-					if writeErr == nil {
+					uploadErr = s.uploadFile(path, res, logThread)
+					if uploadErr == nil {
 						break
 					}
-					logThread(fmt.Sprintf("Try %d / %d ERR: '%v'", i, s.opt.AttemptMax, writeErr))
+					logThread(fmt.Sprintf("Try %d / %d ERR: '%v'", i, s.opt.AttemptMax, uploadErr))
 					time.Sleep(s.opt.AttemptDelay)
 				}
-				if writeErr != nil {
-					logThread(fmt.Sprintf("ERROR '%v'", writeErr))
-					errors <- writeErr
+				if uploadErr != nil {
+					logThread(fmt.Sprintf("ERROR '%v'", uploadErr))
+					errors <- uploadErr
 				} else {
 					logThread("Complete")
 				}
@@ -252,40 +252,40 @@ func (s *OneWay) writeFiles(errors chan<- error) {
 
 	group.Wait()
 
-	logMain("Write files complete")
+	logMain("Upload files complete")
 }
 
-func (s *OneWay) isSingleThreadWriteNeeded(res client.Resource) bool {
+func (s *OneWay) isSingleThreadUploadNeeded(res client.Resource) bool {
 	if s.opt.SingleThreadedFileSize <= 0 {
 		return false
 	}
 	return res.Size > s.opt.SingleThreadedFileSize
 }
 
-func (s *OneWay) writeFile(path string, res client.Resource, logFn func(string)) error {
-	isSingleWriteLocked := true
-	s.signleWriteMutex.Lock()
+func (s *OneWay) uploadFile(path string, res client.Resource, logFn func(string)) error {
+	isSingleThreadLocked := true
+	s.signleThreadUpload.Lock()
 
-	if !s.isSingleThreadWriteNeeded(res) {
-		isSingleWriteLocked = false
-		s.signleWriteMutex.Unlock()
+	if !s.isSingleThreadUploadNeeded(res) {
+		isSingleThreadLocked = false
+		s.signleThreadUpload.Unlock()
 	} else {
-		logFn("Single-thread write begin..")
+		logFn("Single-thread upload begin..")
 	}
 
 	unlockIfNeeded := func() {
-		if isSingleWriteLocked {
-			isSingleWriteLocked = false
+		if isSingleThreadLocked {
+			isSingleThreadLocked = false
 
-			logFn("Single-thread write end")
-			s.signleWriteMutex.Unlock()
+			logFn("Single-thread upload end")
+			s.signleThreadUpload.Unlock()
 		}
 	}
 
 	uploadPath := s.getUploadPath(path, res, s.opt.IndirectUpload)
 	logFn(fmt.Sprintf("Uploading to '%s'", uploadPath))
 
-	srcReader, err := s.src.ReadFile(path)
+	srcReader, err := s.input.ReadFile(path)
 	if err != nil {
 		unlockIfNeeded()
 		return err
@@ -314,16 +314,14 @@ func (s *OneWay) writeFile(path string, res client.Resource, logFn func(string))
 		unlockIfNeeded()
 	}
 
-	err = s.dst.WriteFile(uploadPath, reader, res.Size)
+	err = s.output.WriteFile(uploadPath, reader, res.Size)
 	time.Sleep(time.Second)
 
 	unlockIfNeeded()
 	reader.Close()
 
-	logFn(fmt.Sprintf("readProgress IsComplete %t", reader.IsComplete()))
-	logFn(fmt.Sprintf("err == nil: %t", err == nil))
-	logFn(fmt.Sprintf("err %v, %#v", err, err))
-	logFn(fmt.Sprintf("isErrEOF %t", isErrEOF(err)))
+	logFn(fmt.Sprintf("Reader IsComplete %t", reader.IsComplete()))
+	logFn(fmt.Sprintf("Reader err isErrEOF %t", isErrEOF(err)))
 
 	if err != nil && !isErrEOF(err) {
 		return err
@@ -334,14 +332,14 @@ func (s *OneWay) writeFile(path string, res client.Resource, logFn func(string))
 	logFn(fmt.Sprintf("Read sha256: %s", reader.GetHashSha256()))
 
 	logFn(fmt.Sprintf("Checking %s", uploadPath))
-	err = s.checkWritten(uploadPath, res, reader, logFn)
+	err = s.checkUploaded(uploadPath, res, reader, logFn)
 	if err != nil {
 		return err
 	}
 
 	if path != uploadPath {
 		logFn(fmt.Sprintf("Moving %s", uploadPath))
-		err = s.dst.MoveFile(uploadPath, path)
+		err = s.output.MoveFile(uploadPath, path)
 		if err != nil {
 			return err
 		}
@@ -350,7 +348,7 @@ func (s *OneWay) writeFile(path string, res client.Resource, logFn func(string))
 	return nil
 }
 
-func (s *OneWay) checkWritten(
+func (s *OneWay) checkUploaded(
 	path string,
 	res client.Resource,
 	r *util.Reader,
@@ -358,14 +356,14 @@ func (s *OneWay) checkWritten(
 ) (err error) {
 	if !r.IsComplete() {
 		return fmt.Errorf(
-			"File not written. Stopped at %d of %d (%s / %s)",
+			"Upload not complete: %d of %d (%s / %s)",
 			r.GetBytesRead(),
 			r.GetBytesTotal(),
 			util.FormatBytes(r.GetBytesRead()),
 			util.FormatBytes(r.GetBytesTotal()),
 		)
 	}
-	timeout := s.opt.WriteCheckTimeout
+	timeout := s.opt.UploadCheckTimeout
 	timeStart := time.Now()
 	for time.Now().Sub(timeStart) < timeout {
 		logFn(fmt.Sprintf(
@@ -374,30 +372,30 @@ func (s *OneWay) checkWritten(
 			timeout.String(),
 			path,
 		))
-		written, isExist, resErr := s.dst.GetResource(path)
+		written, isExist, resErr := s.output.GetResource(path)
 		err = resErr
 		if err == nil && isExist {
-			err = s.checkWrittenRes(path, res, written, r, logFn)
+			err = s.checkUploadedRes(path, res, written, r, logFn)
 			if err == nil {
 				return
 			}
 		}
-		time.Sleep(s.opt.WriteCheckDelay)
+		time.Sleep(s.opt.UploadCheckDelay)
 	}
 	if err != nil {
 		return err
 	}
-	return fmt.Errorf("File written but not found atfer timeout %s", timeout.String())
+	return fmt.Errorf("File uploaded but not found atfer timeout %s", timeout.String())
 }
 
-func (s *OneWay) checkWrittenRes(
+func (s *OneWay) checkUploadedRes(
 	path string,
-	src, written client.Resource,
+	input, uploaded client.Resource,
 	r *util.Reader,
 	logFn func(string),
 ) (err error) {
-	if written.HashSha256 != "" {
-		if written.HashSha256 == r.GetHashSha256() {
+	if uploaded.HashSha256 != "" {
+		if uploaded.HashSha256 == r.GetHashSha256() {
 			logFn("Check OK: SHA256 strict matched")
 			return nil
 		}
@@ -405,12 +403,12 @@ func (s *OneWay) checkWrittenRes(
 		return fmt.Errorf(
 			"Written SHA256 not matched (%s -> %s), %s",
 			r.GetHashSha256(),
-			written.HashSha256,
+			uploaded.HashSha256,
 			path,
 		)
 	}
-	if written.HashMd5 != "" {
-		if written.HashMd5 == r.GetHashMd5() {
+	if uploaded.HashMd5 != "" {
+		if uploaded.HashMd5 == r.GetHashMd5() {
 			logFn("Check OK: MD5 strict matched")
 			return nil
 		}
@@ -418,27 +416,27 @@ func (s *OneWay) checkWrittenRes(
 		return fmt.Errorf(
 			"Written MD5 not matched (%s -> %s), %s",
 			r.GetHashMd5(),
-			written.HashMd5,
+			uploaded.HashMd5,
 			path,
 		)
 	}
-	if written.MatchAnyHash(r.GetHashSha256()) {
+	if uploaded.MatchAnyHash(r.GetHashSha256()) {
 		logFn("Check OK: SHA256 matched")
 		return nil
 	}
-	if written.MatchAnyHash(r.GetHashMd5()) {
+	if uploaded.MatchAnyHash(r.GetHashMd5()) {
 		logFn("Check OK: MD5 matched")
 		return nil
 	}
-	if written.Size == src.Size && src.Size == r.GetBytesRead() {
+	if uploaded.Size == input.Size && input.Size == r.GetBytesRead() {
 		logFn("Check OK: size matched")
 		return nil
 	}
 	logFn("Check FAIL: size not matched")
 	return fmt.Errorf(
-		"Written size not matched (%d -> %d), %s",
-		src.Size,
-		written.Size,
+		"Uploaded size not matched (%d -> %d), %s",
+		input.Size,
+		uploaded.Size,
 		path,
 	)
 }
@@ -476,7 +474,7 @@ func (s *OneWay) deleteFiles(errors chan<- error) {
 
 	preparedFilePaths := []string{}
 	for _, path := range s.delPaths {
-		if res, exists := s.dstResources[path]; exists && !res.IsDir {
+		if res, exists := s.outputResources[path]; exists && !res.IsDir {
 			preparedFilePaths = append(preparedFilePaths, path)
 		}
 	}
@@ -507,7 +505,7 @@ func (s *OneWay) deleteFiles(errors chan<- error) {
 				var delErr error = nil
 				for i := uint(1); i <= s.opt.AttemptMax; i++ {
 					logThread(fmt.Sprintf("Try %d / %d", i, s.opt.AttemptMax))
-					delErr = s.dst.DeleteFile(path)
+					delErr = s.output.DeleteFile(path)
 					if delErr == nil {
 						break
 					}

@@ -71,8 +71,8 @@ var defaultSyncConfig = SyncConfig{
 		ThreadCount:            4,
 		AttemptMax:             3,
 		AttemptDelay:           30 * time.Second,
-		WriteCheckDelay:        10 * time.Second,
-		WriteCheckTimeout:      30 * time.Minute,
+		UploadCheckDelay:       10 * time.Second,
+		UploadCheckTimeout:     30 * time.Minute,
 	},
 }
 
