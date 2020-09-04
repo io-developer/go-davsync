@@ -8,8 +8,8 @@ type Client interface {
 	ToAbsPath(relPath string) string
 	ToRelativePath(absPath string) string
 
-	MakeDir(path string, recursive bool) error
-	MakeDirFor(filePath string) error
+	MakeDir(path string) error
+	MakeDirAbs(path string) error
 
 	ReadFile(path string) (reader io.ReadCloser, err error)
 	WriteFile(path string, content io.ReadCloser, size int64) error

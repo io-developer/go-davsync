@@ -130,7 +130,7 @@ func (s *OneWay) makeDirs(errors chan<- error) {
 	for _, path := range addDirs {
 		s.log(fmt.Sprintf("  make dir %s", path))
 
-		err := s.output.MakeDir(path, true)
+		err := s.outputTree.MakeDir(path, true)
 		if err != nil {
 			errors <- err
 		}

@@ -3,8 +3,6 @@ package webdav
 import (
 	"fmt"
 	"io"
-	"regexp"
-	"strings"
 
 	"github.com/io-developer/go-davsync/pkg/client"
 	"github.com/io-developer/go-davsync/pkg/util"
@@ -44,10 +42,6 @@ func (c *Client) ToRelativePath(absPath string) string {
 	return c.opt.toRelPath(absPath)
 }
 
-func (c *Client) ReadTreeParents() (absPaths []string, items map[string]client.Resource, err error) {
-	return c.tree.ReadParents()
-}
-
 func (c *Client) ReadTree() (parents map[string]client.Resource, children map[string]client.Resource, err error) {
 	return c.tree.ReadTree()
 }
@@ -56,64 +50,17 @@ func (c *Client) GetResource(path string) (res client.Resource, exists bool, err
 	return c.tree.GetResource(path)
 }
 
-func (c *Client) MakeDir(path string, recursive bool) error {
-	if recursive {
-		return c.makeDirRecursive(c.opt.toAbsPath(path))
-	}
-	_, err := c.makeDir(c.opt.toAbsPath(path))
-	return err
+func (c *Client) MakeDir(path string) error {
+	return c.MakeDirAbs(c.opt.toAbsPath(path))
 }
 
-func (c *Client) MakeDirFor(filePath string) error {
-	re, err := regexp.Compile("(^|/+)[^/]+$")
-	if err != nil {
-		return err
-	}
-	dir := re.ReplaceAllString(filePath, "")
-	return c.makeDirRecursive(c.opt.toAbsPath(dir))
-}
-
-func (c *Client) makeDirRecursive(absPath string) error {
-	parts := strings.Split(strings.Trim(absPath, "/"), "/")
-	total := len(parts)
-	if total < 1 {
+func (c *Client) MakeDirAbs(absPath string) error {
+	absPath = util.PathNormalize(absPath, true)
+	code, err := c.adapter.Mkcol(absPath)
+	if err == nil && code >= 200 && code < 300 {
 		return nil
 	}
-	subDir := "/"
-	for _, part := range parts {
-		if part != "" {
-			subDir += part + "/"
-			code, err := c.makeDir(subDir)
-			if err != nil && code != 409 {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func (c *Client) makeDir(absPath string) (code int, err error) {
-	absPath = util.PathNormalize(absPath, true)
-	_, parents, err := c.tree.ReadParents()
-	if _, exists := parents[absPath]; exists {
-		return 200, nil
-	}
-	if _, exists := c.createdDirs[absPath]; exists {
-		return 200, nil
-	}
-	path := c.opt.toRelPath(absPath)
-	_, items, err := c.tree.ReadTree()
-	if err != nil {
-		return 0, err
-	}
-	if item, exists := items[path]; exists && item.IsDir {
-		return 200, nil
-	}
-	code, err = c.adapter.Mkcol(absPath)
-	if err == nil && code >= 200 && code < 300 {
-		c.createdDirs[absPath] = absPath
-	}
-	return
+	return err
 }
 
 func (c *Client) ReadFile(path string) (reader io.ReadCloser, err error) {

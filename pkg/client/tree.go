@@ -1,7 +1,6 @@
 package client
 
 import (
-	"regexp"
 	"sort"
 	"strings"
 
@@ -10,8 +9,6 @@ import (
 
 type Tree interface {
 	ReadTree() (parents map[string]Resource, children map[string]Resource, err error)
-
-	ReadParents() (absPaths []string, items map[string]Resource, err error)
 	GetResource(path string) (res Resource, exists bool, err error)
 }
 
@@ -101,13 +98,11 @@ func (t *TreeBuffer) MakeDir(path string, recursive bool) error {
 	return t.makeDir(t.ToAbsPath(path))
 }
 
-func (t *TreeBuffer) MakeDirFor(filePath string) error {
-	re, err := regexp.Compile("(^|/+)[^/]+$")
-	if err != nil {
-		return err
+func (t *TreeBuffer) MakeDirAbs(absPath string, recursive bool) error {
+	if recursive {
+		return t.makeDirRecursive(absPath)
 	}
-	dir := re.ReplaceAllString(filePath, "")
-	return t.makeDirRecursive(t.ToAbsPath(dir))
+	return t.makeDir(absPath)
 }
 
 func (t *TreeBuffer) makeDirRecursive(absPath string) error {
@@ -145,7 +140,7 @@ func (t *TreeBuffer) makeDir(absPath string) (err error) {
 	if item, exists := t.children[path]; exists && item.IsDir {
 		return nil
 	}
-	err = t.client.MakeDir(path, false)
+	err = t.client.MakeDirAbs(absPath)
 	if err == nil {
 		t.createdDirs[absPath] = absPath
 	}

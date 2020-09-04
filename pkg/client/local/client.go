@@ -29,21 +29,13 @@ func (c *Client) ToRelativePath(absPath string) string {
 	return c.opt.toRelPath(absPath)
 }
 
-func (c *Client) ReadParents() (absPaths []string, nodes map[string]client.Resource, err error) {
-	return
-}
-
 func (c *Client) ReadTree() (parents map[string]client.Resource, children map[string]client.Resource, err error) {
 	parents = map[string]client.Resource{}
 	children = map[string]client.Resource{}
 	err = filepath.Walk(c.opt.BaseDir, func(absPath string, info os.FileInfo, err error) error {
 		res := c.toResource(absPath, info)
 		path := res.Path
-		if c.opt.toRelPath(absPath) == c.opt.toRelPath(c.opt.BaseDir) {
-			parents[util.PathNormalize(absPath, true)] = res
-		} else {
-			children[path] = res
-		}
+		children[path] = res
 		return nil
 	})
 	return
@@ -63,12 +55,13 @@ func (c *Client) GetResource(path string) (res client.Resource, exists bool, err
 	return
 }
 
-func (c *Client) MakeDir(path string, recursive bool) error {
-	absPath := c.opt.toAbsPath(path)
-	if recursive {
-		return os.MkdirAll(absPath, c.opt.DirMode)
-	}
-	return os.Mkdir(absPath, c.opt.DirMode)
+func (c *Client) MakeDir(path string) error {
+	return c.MakeDirAbs(c.opt.toAbsPath(path))
+}
+
+func (c *Client) MakeDirAbs(absPath string) error {
+	absPath = util.PathNormalize(absPath, true)
+	return os.MkdirAll(absPath, c.opt.DirMode)
 }
 
 func (c *Client) ReadFile(path string) (reader io.ReadCloser, err error) {

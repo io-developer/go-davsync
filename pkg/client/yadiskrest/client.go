@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -56,19 +55,6 @@ func (c *Client) ToRelativePath(absPath string) string {
 	return c.opt.toRelPath(absPath)
 }
 
-func (c *Client) ReadParents() (absPaths []string, items map[string]client.Resource, err error) {
-	err = c.readTree()
-	if err != nil {
-		return
-	}
-	absPaths = c.treeParentPaths
-	items = map[string]client.Resource{}
-	for absPath, parent := range c.treeParents {
-		items[absPath] = parent.ToResource(absPath)
-	}
-	return
-}
-
 func (c *Client) ReadTree() (parents map[string]client.Resource, children map[string]client.Resource, err error) {
 	err = c.readTree()
 	if err != nil {
@@ -110,56 +96,25 @@ func (c *Client) GetResource(path string) (res client.Resource, exists bool, err
 	return
 }
 
-func (c *Client) MakeDir(path string, recursive bool) error {
-	if recursive {
-		return c.makeDirRecursive(path)
-	}
-	_, err := c.makeDir(path)
-	return err
+func (c *Client) MakeDir(path string) error {
+	return c.MakeDirAbs(c.opt.toAbsPath(path))
 }
 
-func (c *Client) MakeDirFor(filePath string) error {
-	re, err := regexp.Compile("(^|/+)[^/]+$")
+func (c *Client) MakeDirAbs(absPath string) error {
+	req, err := c.createRequest("PUT", "/resources", url.Values{
+		"path": []string{absPath},
+	}, nil)
 	if err != nil {
 		return err
 	}
-	dir := re.ReplaceAllString(filePath, "")
-	return c.makeDirRecursive(dir)
-}
-
-func (c *Client) makeDirRecursive(path string) error {
-	parts := strings.Split(strings.Trim(path, "/"), "/")
-	total := len(parts)
-	if total < 1 {
-		return nil
-	}
-	dir := ""
-	for _, part := range parts {
-		dir += "/" + part
-		code, err := c.makeDir(dir)
-		if err != nil && code != 409 {
-			return err
-		}
-	}
-	return nil
-}
-
-func (c *Client) makeDir(path string) (code int, err error) {
-	req, err := c.createRequest("PUT", "/resources", url.Values{
-		"path": []string{c.opt.toAbsPath(path)},
-	}, nil)
-	if err != nil {
-		return
-	}
 	resp, err := c.sendRequest(req)
 	if err != nil {
-		return
+		return err
 	}
-	code = resp.StatusCode
-	if code != 201 {
-		err = fmt.Errorf("Expected mkdir code 201, got %d '%s'", code, resp.Status)
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return nil
 	}
-	return
+	return fmt.Errorf("Unexpected mkdir code %d '%s'", resp.StatusCode, resp.Status)
 }
 
 func (c *Client) ReadFile(path string) (reader io.ReadCloser, err error) {
