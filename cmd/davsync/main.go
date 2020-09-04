@@ -7,6 +7,7 @@ import (
 	"github.com/io-developer/go-davsync/pkg/client"
 	"github.com/io-developer/go-davsync/pkg/client/local"
 	"github.com/io-developer/go-davsync/pkg/client/webdav"
+	"github.com/io-developer/go-davsync/pkg/client/yadisk"
 	"github.com/io-developer/go-davsync/pkg/client/yadiskrest"
 	"github.com/io-developer/go-davsync/pkg/synchronizer"
 )
@@ -68,23 +69,26 @@ func main() {
 	log.Println("\n\nDone.")
 }
 
-func createClient(conf ClientConfig) (client.Client, error) {
-	if conf.Type == ClientTypeLocal {
-		return local.NewClient(conf.LocalOptions), nil
+func createClient(conf ClientConfig) (c client.Client, err error) {
+	switch conf.Type {
+	case ClientTypeLocal:
+		c = local.NewClient(conf.LocalOptions)
+		return
+	case ClientTypeWebdav:
+		c = webdav.NewClient(conf.WebdavOptions)
+		return
+	case ClientTypeYadiskRest:
+		c = yadiskrest.NewClient(conf.YadiskRestOptions)
+		return
+	case ClientTypeYadisk:
+		c = yadisk.NewClient(
+			webdav.NewClient(conf.WebdavOptions),
+			yadiskrest.NewClient(conf.YadiskRestOptions),
+		)
+		return
 	}
-	if conf.Type == ClientTypeWebdav {
-		return webdav.NewClient(conf.WebdavOptions), nil
-	}
-	if conf.Type == ClientTypeYadiskRest {
-		return yadiskrest.NewClient(conf.YadiskRestOptions), nil
-	}
-	if conf.Type == ClientTypeYadisk {
-		//	rest := yadiskrest.NewClient(conf.YadiskRestOptions)
-		dav := webdav.NewClient(conf.WebdavOptions)
-		//	dav.SetTree(rest)
-		return dav, nil
-	}
-	return nil, fmt.Errorf("Unexpected client type '%s'", conf.Type)
+	err = fmt.Errorf("Unexpected client type '%s'", conf.Type)
+	return
 }
 
 func sync(input, output client.Client, conf SyncConfig) error {
