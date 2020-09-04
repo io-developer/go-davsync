@@ -36,11 +36,16 @@ func PathAbs(relPath, baseDir string) string {
 }
 
 func PathParents(path string) []string {
+	offset := 1
+	isDir := strings.HasSuffix(path, "/")
+	if isDir {
+		offset = 0
+	}
 	norm := filepath.Join("/", strings.Trim(path, "/"))
 	parents := []string{}
 	parent := ""
 	parts := strings.Split(norm, "/")
-	for i := 0; i < len(parts)-1; i++ {
+	for i := 0; i < len(parts)-offset; i++ {
 		part := parts[i]
 		parent += part + "/"
 		parents = append(parents, parent)

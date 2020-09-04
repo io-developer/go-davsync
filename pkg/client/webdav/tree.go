@@ -3,95 +3,9 @@ package webdav
 import (
 	"fmt"
 	"log"
-	"sort"
-	"strings"
 
-	"github.com/io-developer/go-davsync/pkg/client"
+	"github.com/io-developer/go-davsync/pkg/util"
 )
-
-type Tree struct {
-	opt       Options
-	adapter   *Adapter
-	parents   map[string]Propfind
-	items     map[string]Propfind
-	itemPaths []string
-}
-
-func NewTree(opt Options) *Tree {
-	return &Tree{
-		opt:     opt,
-		adapter: NewAdapter(opt),
-	}
-}
-
-func (t *Tree) ReadParents() (absPaths []string, resources map[string]client.Resource, err error) {
-	if t.parents == nil {
-		t.parents = make(map[string]Propfind)
-		err = t.readParents()
-	}
-	if err != nil {
-		return
-	}
-	absPaths = []string{}
-	resources = map[string]client.Resource{}
-	for path, propfind := range t.parents {
-		absPaths = append(absPaths, path)
-		resources[path] = propfind.ToResource(path)
-	}
-	sort.Slice(absPaths, func(i, j int) bool {
-		return absPaths[i] < absPaths[j]
-	})
-	return
-}
-
-func (t *Tree) readParents() error {
-	parts := strings.Split(strings.Trim(t.opt.BaseDir, "/"), "/")
-	total := len(parts)
-	if total < 1 {
-		return nil
-	}
-	absPath := ""
-	for _, part := range parts {
-		absPath += "/" + part
-		some, code, err := t.adapter.Propfind(absPath, "0")
-		if code == 404 {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		if len(some.Propfinds) < 1 {
-			return err
-		}
-		parent := some.Propfinds[0]
-		t.parents[parent.GetNormalizedAbsPath()] = parent
-	}
-	return nil
-}
-
-func (t *Tree) ReadTree() (parents map[string]client.Resource, children map[string]client.Resource, err error) {
-	// caching parent on first reading
-	_, parents, err = t.ReadParents()
-	if err != nil {
-		return
-	}
-	if t.items == nil {
-		reader := newTreeReader(t.opt, 4)
-		err = reader.ReadDir("/")
-		t.itemPaths, t.items = reader.parsedPaths, reader.parsedItems
-		sort.Slice(t.itemPaths, func(i, j int) bool {
-			return t.itemPaths[i] < t.itemPaths[j]
-		})
-	}
-	if err != nil {
-		return
-	}
-	children = map[string]client.Resource{}
-	for path, propfind := range t.items {
-		children[path] = propfind.ToResource(path)
-	}
-	return
-}
 
 type treeReader struct {
 	opt         Options
@@ -112,6 +26,33 @@ func newTreeReader(opt Options, numThreads int) *treeReader {
 
 func (r *treeReader) log(msg string) {
 	log.Printf("Dav tree: %s\n", msg)
+}
+
+func (r *treeReader) readParents() (parents map[string]Propfind, err error) {
+	adapter := NewAdapter(r.opt)
+
+	parents = map[string]Propfind{}
+	parentPaths := util.PathParents(util.PathNormalizeBaseDir(r.opt.BaseDir))
+	total := len(parentPaths)
+	if total < 1 {
+		return
+	}
+	for _, absPath := range parentPaths {
+		some, code, aerr := adapter.Propfind(absPath, "0")
+		if code == 404 {
+			return
+		}
+		if aerr != nil {
+			err = aerr
+			return
+		}
+		if len(some.Propfinds) == 0 {
+			break
+		}
+		parent := some.Propfinds[0]
+		parents[parent.GetNormalizedAbsPath()] = parent
+	}
+	return
 }
 
 func (r *treeReader) ReadDir(path string) (err error) {

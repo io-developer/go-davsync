@@ -11,18 +11,14 @@ import (
 type Client struct {
 	client.Client
 
-	opt         Options
-	adapter     *Adapter
-	tree        *Tree
-	createdDirs map[string]string
+	opt     Options
+	adapter *Adapter
 }
 
 func NewClient(opt Options) *Client {
 	return &Client{
-		opt:         opt,
-		adapter:     NewAdapter(opt),
-		tree:        NewTree(opt),
-		createdDirs: make(map[string]string),
+		opt:     opt,
+		adapter: NewAdapter(opt),
 	}
 }
 
@@ -35,7 +31,24 @@ func (c *Client) ToRelativePath(absPath string) string {
 }
 
 func (c *Client) ReadTree() (parents map[string]client.Resource, children map[string]client.Resource, err error) {
-	return c.tree.ReadTree()
+	reader := newTreeReader(c.opt, 4)
+	parentItems, err := reader.readParents()
+	if err != nil {
+		return
+	}
+	parents = map[string]client.Resource{}
+	for path, propfind := range parentItems {
+		parents[path] = propfind.ToResource(path)
+	}
+	err = reader.ReadDir("/")
+	if err != nil {
+		return
+	}
+	children = map[string]client.Resource{}
+	for path, propfind := range reader.parsedItems {
+		children[path] = propfind.ToResource(path)
+	}
+	return
 }
 
 func (c *Client) ReadResource(path string) (res client.Resource, exists bool, err error) {

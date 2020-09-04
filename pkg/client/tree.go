@@ -32,7 +32,7 @@ func (t *TreeBuffer) ToRelativePath(absPath string) string {
 
 func (t *TreeBuffer) Read() (err error) {
 	t.parents, t.children, err = t.client.ReadTree()
-	if err != nil {
+	if err == nil {
 		t.isReaden = true
 		t.createdDirs = make(map[string]string)
 	}
@@ -76,9 +76,11 @@ func (t *TreeBuffer) GetChild(path string) (r Resource, exists bool) {
 }
 
 func (t *TreeBuffer) GetChildrenPaths() []string {
+	i := 0
 	paths := make([]string, len(t.children))
 	for path := range t.children {
-		paths = append(paths, path)
+		paths[i] = path
+		i++
 	}
 	sort.Slice(paths, func(i, j int) bool {
 		return paths[i] < paths[j]
