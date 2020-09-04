@@ -48,7 +48,7 @@ func (c *Client) ReadTreeParents() (absPaths []string, items map[string]client.R
 	return c.tree.ReadParents()
 }
 
-func (c *Client) ReadTree() (paths []string, items map[string]client.Resource, err error) {
+func (c *Client) ReadTree() (parents map[string]client.Resource, children map[string]client.Resource, err error) {
 	return c.tree.ReadTree()
 }
 

@@ -69,16 +69,20 @@ func (c *Client) ReadParents() (absPaths []string, items map[string]client.Resou
 	return
 }
 
-func (c *Client) ReadTree() (paths []string, items map[string]client.Resource, err error) {
+func (c *Client) ReadTree() (parents map[string]client.Resource, children map[string]client.Resource, err error) {
 	err = c.readTree()
 	if err != nil {
 		return
 	}
-	items = map[string]client.Resource{}
-	for path, item := range c.treeItems {
-		items[path] = item.ToResource(path)
+	parents = map[string]client.Resource{}
+	for absPath, parent := range c.treeParents {
+		parents[absPath] = parent.ToResource(absPath)
 	}
-	return c.treeItemPaths, items, nil
+	children = map[string]client.Resource{}
+	for path, item := range c.treeItems {
+		children[path] = item.ToResource(path)
+	}
+	return
 }
 
 func (c *Client) GetResource(path string) (res client.Resource, exists bool, err error) {

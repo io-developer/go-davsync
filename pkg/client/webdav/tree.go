@@ -69,9 +69,9 @@ func (t *Tree) readParents() error {
 	return nil
 }
 
-func (t *Tree) ReadTree() (paths []string, resources map[string]client.Resource, err error) {
+func (t *Tree) ReadTree() (parents map[string]client.Resource, children map[string]client.Resource, err error) {
 	// caching parent on first reading
-	_, _, err = t.ReadParents()
+	_, parents, err = t.ReadParents()
 	if err != nil {
 		return
 	}
@@ -86,10 +86,9 @@ func (t *Tree) ReadTree() (paths []string, resources map[string]client.Resource,
 	if err != nil {
 		return
 	}
-	paths = t.itemPaths
-	resources = map[string]client.Resource{}
+	children = map[string]client.Resource{}
 	for path, propfind := range t.items {
-		resources[path] = propfind.ToResource(path)
+		children[path] = propfind.ToResource(path)
 	}
 	return
 }

@@ -85,17 +85,13 @@ func (s *OneWay) readTrees(errors chan<- error) {
 	group := sync.WaitGroup{}
 	group.Add(2)
 	go func() {
-		var err error
-		_, _, err = s.inputTree.ReadTree()
-		if err != nil {
+		if err := s.inputTree.Read(); err != nil {
 			errors <- err
 		}
 		group.Done()
 	}()
 	go func() {
-		var err error
-		_, _, err = s.outputTree.ReadTree()
-		if err != nil {
+		if err := s.outputTree.Read(); err != nil {
 			errors <- err
 		}
 		group.Done()
@@ -107,8 +103,8 @@ func (s *OneWay) calcDiff() {
 	s.log("Calculating input/output path diff...")
 
 	s.bothPaths, s.addPaths, s.delPaths = util.Diff(
-		s.inputTree.GetTreePaths(),
-		s.outputTree.GetTreePaths(),
+		s.inputTree.GetChildrenPaths(),
+		s.outputTree.GetChildrenPaths(),
 	)
 
 	s.log("Path diff:")
@@ -224,7 +220,7 @@ func (s *OneWay) handlePaths(
 }
 
 func (s *OneWay) uploadFile(path string, logFn func(string)) error {
-	res, exists := s.inputTree.GetTreeResource(path)
+	res, exists := s.inputTree.GetChild(path)
 	if !exists {
 		logFn("Not exists. Skiping..")
 		return nil
@@ -430,7 +426,7 @@ func (s *OneWay) checkUploadedRes(
 }
 
 func (s *OneWay) deleteOutputFile(path string, logFn func(string)) error {
-	res, exists := s.outputTree.GetTreeResource(path)
+	res, exists := s.outputTree.GetChild(path)
 	if !exists {
 		logFn("Not exists. Skiping..")
 		return nil

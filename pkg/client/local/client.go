@@ -33,14 +33,17 @@ func (c *Client) ReadParents() (absPaths []string, nodes map[string]client.Resou
 	return
 }
 
-func (c *Client) ReadTree() (paths []string, nodes map[string]client.Resource, err error) {
-	paths = []string{}
-	nodes = map[string]client.Resource{}
+func (c *Client) ReadTree() (parents map[string]client.Resource, children map[string]client.Resource, err error) {
+	parents = map[string]client.Resource{}
+	children = map[string]client.Resource{}
 	err = filepath.Walk(c.opt.BaseDir, func(absPath string, info os.FileInfo, err error) error {
 		res := c.toResource(absPath, info)
 		path := res.Path
-		paths = append(paths, path)
-		nodes[path] = res
+		if c.opt.toRelPath(absPath) == c.opt.toRelPath(c.opt.BaseDir) {
+			parents[util.PathNormalize(absPath, true)] = res
+		} else {
+			children[path] = res
+		}
 		return nil
 	})
 	return
