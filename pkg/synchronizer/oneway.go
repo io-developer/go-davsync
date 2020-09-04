@@ -356,7 +356,7 @@ func (s *OneWay) checkUploaded(
 			timeout.String(),
 			path,
 		))
-		written, isExist, resErr := s.output.GetResource(path)
+		written, isExist, resErr := s.output.ReadResource(path)
 		err = resErr
 		if err == nil && isExist {
 			err = s.checkUploadedRes(path, res, written, r, logFn)

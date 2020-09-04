@@ -3,10 +3,11 @@ package client
 import "io"
 
 type Client interface {
-	Tree
-
 	ToAbsPath(relPath string) string
 	ToRelativePath(absPath string) string
+
+	ReadTree() (parents map[string]Resource, children map[string]Resource, err error)
+	ReadResource(path string) (res Resource, exists bool, err error)
 
 	MakeDir(path string) error
 	MakeDirAbs(path string) error

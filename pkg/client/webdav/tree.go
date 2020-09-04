@@ -93,21 +93,6 @@ func (t *Tree) ReadTree() (parents map[string]client.Resource, children map[stri
 	return
 }
 
-func (t *Tree) GetResource(path string) (res client.Resource, exists bool, err error) {
-	adapter := NewAdapter(t.opt)
-	some, code, err := adapter.Propfind(t.opt.toAbsPath(path), "0")
-	if err == nil && len(some.Propfinds) == 1 {
-		propfind := some.Propfinds[0]
-		res = propfind.ToResource(path)
-		exists = true
-		return
-	}
-	if code == 404 {
-		err = nil
-	}
-	return
-}
-
 type treeReader struct {
 	opt         Options
 	numThreads  int

@@ -71,7 +71,7 @@ func (c *Client) ReadTree() (parents map[string]client.Resource, children map[st
 	return
 }
 
-func (c *Client) GetResource(path string) (res client.Resource, exists bool, err error) {
+func (c *Client) ReadResource(path string) (res client.Resource, exists bool, err error) {
 	resp, err := c.request("GET", "/resources/", url.Values{
 		"path": []string{c.opt.toAbsPath(path)},
 	})

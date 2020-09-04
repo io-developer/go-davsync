@@ -13,7 +13,7 @@ type Client struct {
 
 	opt         Options
 	adapter     *Adapter
-	tree        client.Tree
+	tree        *Tree
 	createdDirs map[string]string
 }
 
@@ -24,14 +24,6 @@ func NewClient(opt Options) *Client {
 		tree:        NewTree(opt),
 		createdDirs: make(map[string]string),
 	}
-}
-
-func (c *Client) SetTree(t client.Tree) error {
-	if t == nil {
-		return fmt.Errorf("Unexpected non-nil Tree")
-	}
-	c.tree = t
-	return nil
 }
 
 func (c *Client) ToAbsPath(relPath string) string {
@@ -46,8 +38,18 @@ func (c *Client) ReadTree() (parents map[string]client.Resource, children map[st
 	return c.tree.ReadTree()
 }
 
-func (c *Client) GetResource(path string) (res client.Resource, exists bool, err error) {
-	return c.tree.GetResource(path)
+func (c *Client) ReadResource(path string) (res client.Resource, exists bool, err error) {
+	some, code, err := c.adapter.Propfind(c.opt.toAbsPath(path), "0")
+	if err == nil && len(some.Propfinds) == 1 {
+		propfind := some.Propfinds[0]
+		res = propfind.ToResource(path)
+		exists = true
+		return
+	}
+	if code == 404 {
+		err = nil
+	}
+	return
 }
 
 func (c *Client) MakeDir(path string) error {

@@ -41,7 +41,7 @@ func (c *Client) ReadTree() (parents map[string]client.Resource, children map[st
 	return
 }
 
-func (c *Client) GetResource(path string) (res client.Resource, exists bool, err error) {
+func (c *Client) ReadResource(path string) (res client.Resource, exists bool, err error) {
 	absPath := c.opt.toAbsPath(path)
 	info, err := os.Stat(absPath)
 	if err == nil {

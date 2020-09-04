@@ -7,11 +7,6 @@ import (
 	"github.com/io-developer/go-davsync/pkg/util"
 )
 
-type Tree interface {
-	ReadTree() (parents map[string]Resource, children map[string]Resource, err error)
-	GetResource(path string) (res Resource, exists bool, err error)
-}
-
 type TreeBuffer struct {
 	client      Client
 	isReaden    bool

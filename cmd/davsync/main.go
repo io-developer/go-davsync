@@ -79,9 +79,9 @@ func createClient(conf ClientConfig) (client.Client, error) {
 		return yadiskrest.NewClient(conf.YadiskRestOptions), nil
 	}
 	if conf.Type == ClientTypeYadisk {
-		rest := yadiskrest.NewClient(conf.YadiskRestOptions)
+		//	rest := yadiskrest.NewClient(conf.YadiskRestOptions)
 		dav := webdav.NewClient(conf.WebdavOptions)
-		dav.SetTree(rest)
+		//	dav.SetTree(rest)
 		return dav, nil
 	}
 	return nil, fmt.Errorf("Unexpected client type '%s'", conf.Type)
