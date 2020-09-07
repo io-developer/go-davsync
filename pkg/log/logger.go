@@ -6,7 +6,8 @@ import (
 )
 
 type Logger struct {
-	level Level
+	level   Level
+	counter int64
 }
 
 func Newlogger() *Logger {
@@ -17,10 +18,15 @@ func (l *Logger) SetLevel(level Level) {
 	l.level = level
 }
 
+func (l *Logger) GetCounter() int64 {
+	return l.counter
+}
+
 func (l *Logger) Log(level Level, a ...interface{}) {
 	if l.level > level {
 		return
 	}
+	l.counter++
 	switch level {
 	case DebugLevel:
 		fmt.Println(a...)
@@ -47,6 +53,7 @@ func (l *Logger) Logf(level Level, format string, a ...interface{}) {
 	if l.level > level {
 		return
 	}
+	l.counter++
 	switch level {
 	case DebugLevel:
 		fmt.Printf(format, a...)
