@@ -2,8 +2,8 @@ package webdav
 
 import (
 	"fmt"
-	"log"
 
+	"github.com/io-developer/go-davsync/pkg/log"
 	"github.com/io-developer/go-davsync/pkg/util"
 )
 
@@ -25,7 +25,7 @@ func newTreeReader(opt Options, numThreads int) *treeReader {
 }
 
 func (r *treeReader) log(msg string) {
-	log.Printf("Dav tree: %s\n", msg)
+	log.Infof("Dav tree: %s\n", msg)
 }
 
 func (r *treeReader) readParents() (parents map[string]Propfind, err error) {

@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"flag"
 	"io/ioutil"
-	"log"
 	"time"
 
 	"github.com/io-developer/go-davsync/pkg/client/local"
 	"github.com/io-developer/go-davsync/pkg/client/webdav"
 	"github.com/io-developer/go-davsync/pkg/client/yadiskrest"
+	"github.com/io-developer/go-davsync/pkg/log"
 	"github.com/io-developer/go-davsync/pkg/synchronizer"
 )
 
@@ -120,7 +120,7 @@ func parseClientConfig(path string, outConf *ClientConfig, baseDir string) error
 	if path != "" {
 		var bytes []byte
 		bytes, err := ioutil.ReadFile(path)
-		log.Println("parseClientConfig bytes", path, string(bytes))
+		log.Debug("parseClientConfig bytes", path, string(bytes))
 		if err != nil {
 			return err
 		}
@@ -139,7 +139,7 @@ func parseSyncConfig(path string, outConf *SyncConfig, args Args) error {
 	if path != "" {
 		var bytes []byte
 		bytes, err := ioutil.ReadFile(path)
-		log.Println("parseSyncConfig bytes", path, string(bytes))
+		log.Debug("parseSyncConfig bytes", path, string(bytes))
 		if err != nil {
 			return err
 		}

@@ -3,11 +3,11 @@ package synchronizer
 import (
 	"crypto"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
 	"github.com/io-developer/go-davsync/pkg/client"
+	"github.com/io-developer/go-davsync/pkg/log"
 	"github.com/io-developer/go-davsync/pkg/util"
 )
 
@@ -78,7 +78,7 @@ func (s *OneWay) Sync(errors chan<- error) {
 }
 
 func (s *OneWay) log(msg string) {
-	log.Printf("Sync: %s\n", msg)
+	log.Infof("Sync: %s\n", msg)
 }
 
 func (s *OneWay) readTrees(errors chan<- error) {

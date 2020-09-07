@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/io-developer/go-davsync/pkg/log"
 )
 
 type Adapter struct {
@@ -63,7 +64,7 @@ func (c *Adapter) createRequest(
 		req.Header.Add(key, val)
 	}
 
-	fmt.Printf(
+	log.Debugf(
 		"createRequest\n  path: %s\n  uri: %s\n  method: %s\n  headers: %#v\n\n",
 		path,
 		uri,
@@ -103,10 +104,10 @@ func (c *Adapter) requestTry(reqFn func() (*http.Request, error)) (resp *http.Re
 		if err == nil && resp != nil && resp.StatusCode != 429 {
 			return
 		}
-		fmt.Printf("request retry %d of %d: ", i+1, c.RetryLimit)
+		log.Warn("request retry %d of %d: ", i+1, c.RetryLimit)
 		time.Sleep(c.RetryDelay)
 	}
-	fmt.Println("request tried out", err)
+	log.Warn("request tried out", err)
 	return
 }
 
@@ -176,7 +177,7 @@ func (c *Adapter) PutFile(path string, body io.Reader, size int64) (code int, er
 	req.Close = true
 	resp, err := c.request(req)
 	if err != nil {
-		log.Printf("Dav adapter: PutFile error '%#v'\n", err)
+		log.Debug("Dav adapter: PutFile error '%#v'\n", err)
 		return
 	}
 	code = resp.StatusCode

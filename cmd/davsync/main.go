@@ -2,13 +2,13 @@ package main
 
 import (
 	"fmt"
-	"log"
 
 	"github.com/io-developer/go-davsync/pkg/client"
 	"github.com/io-developer/go-davsync/pkg/client/local"
 	"github.com/io-developer/go-davsync/pkg/client/webdav"
 	"github.com/io-developer/go-davsync/pkg/client/yadisk"
 	"github.com/io-developer/go-davsync/pkg/client/yadiskrest"
+	"github.com/io-developer/go-davsync/pkg/log"
 	"github.com/io-developer/go-davsync/pkg/synchronizer"
 )
 
@@ -47,26 +47,28 @@ const (
 )
 
 func main() {
+	log.DefaultLogger.SetLevel(log.InfoLevel)
+
 	args, err := parseArgs()
 	if err != nil {
-		log.Fatalln("Error at cli args parsing", err)
+		log.Fatal("Error at cli args parsing", err)
 	}
-	log.Printf("CLI ARGS:\n%#v\n\n", args)
+	log.Debugf("CLI ARGS:\n%#v\n\n", args)
 
 	input, err := createClient(args.inputConfig)
 	if err != nil {
-		log.Fatalln("Input client creation error", err)
+		log.Fatal("Input client creation error", err)
 	}
 	output, err := createClient(args.outputConfig)
 	if err != nil {
-		log.Fatalln("Output client creation error", err)
+		log.Fatal("Output client creation error", err)
 	}
 	err = sync(input, output, args.syncConfig)
 	if err != nil {
-		log.Fatalln("Sync error", err)
+		log.Fatal("Sync error", err)
 	}
 
-	log.Println("\n\nDone.")
+	log.Info("\n\nDone.")
 }
 
 func createClient(conf ClientConfig) (c client.Client, err error) {
@@ -99,20 +101,20 @@ func sync(input, output client.Client, conf SyncConfig) error {
 }
 
 func syncOnewWay(input, output client.Client, conf SyncConfig) error {
-	log.Println("Sync OneWay start..")
+	log.Debug("Sync OneWay start..")
 
 	s := synchronizer.NewOneWay(input, output, conf.OneWay)
 
 	errors := make(chan error)
 	go func(errors <-chan error) {
-		log.Println("Listening for errors...")
+		log.Info("Listening for errors...")
 		for {
 			select {
 			case err, ok := <-errors:
 				if !ok {
 					return
 				}
-				log.Println("!!! ERROR", err)
+				log.Error("!!! ERROR", err)
 			}
 		}
 	}(errors)
@@ -120,7 +122,7 @@ func syncOnewWay(input, output client.Client, conf SyncConfig) error {
 	s.Sync(errors)
 	close(errors)
 
-	log.Println("Sync OneWay end")
+	log.Debug("Sync OneWay end")
 
 	return nil
 }

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"net/url"
 	"sort"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/io-developer/go-davsync/pkg/client"
+	"github.com/io-developer/go-davsync/pkg/log"
 	"github.com/io-developer/go-davsync/pkg/util"
 )
 
@@ -143,7 +143,7 @@ func (c *Client) ReadFile(path string) (reader io.ReadCloser, err error) {
 	if err != nil {
 		return
 	}
-	log.Println("item md5", item.Md5)
+	log.Debug("item md5", item.Md5)
 	return resp.Body, nil
 }
 
@@ -171,7 +171,7 @@ func (c *Client) WriteFile(path string, content io.ReadCloser, size int64) error
 	if err != nil {
 		return err
 	}
-	log.Printf("UploadInfo:\n%#v\n", info)
+	log.Debug("UploadInfo:\n%#v\n", info)
 	if info.Templated {
 		return fmt.Errorf("Unexpected templated=true.\n  Info: %#v", info)
 	}
@@ -242,7 +242,7 @@ func (c *Client) readTree() error {
 	if err != nil {
 		return err
 	}
-	log.Println("read tree: parsing json...")
+	log.Debug("read tree: parsing json...")
 	r := &Resources{}
 	err = json.Unmarshal(bytes, &r)
 	if err != nil {
@@ -254,22 +254,22 @@ func (c *Client) readTree() error {
 	c.treeItems = map[string]Resource{}
 	c.treeItemPaths = []string{}
 
-	log.Println("read tree: filling tree and parents...")
+	log.Debug("read tree: filling tree and parents...")
 	for _, item := range r.Items {
 		c.appendTree(item)
 	}
 
-	log.Println("read tree: sorting parent paths...")
+	log.Debug("read tree: sorting parent paths...")
 	sort.Slice(c.treeParentPaths, func(i, j int) bool {
 		return c.treeParentPaths[i] < c.treeParentPaths[j]
 	})
 
-	log.Println("read tree: sorting item paths...")
+	log.Debug("read tree: sorting item paths...")
 	sort.Slice(c.treeItemPaths, func(i, j int) bool {
 		return c.treeItemPaths[i] < c.treeItemPaths[j]
 	})
 
-	log.Println("read tree: complete")
+	log.Debug("read tree: complete")
 	return nil
 }
 
@@ -285,7 +285,7 @@ func (c *Client) appendTree(item Resource) {
 			if _, exists := c.treeItems[dirPath]; exists {
 				continue
 			}
-			log.Println("read tree: appending dir", dirPath)
+			log.Debug("read tree: appending dir", dirPath)
 			c.treeItems[dirPath] = c.createDirResource(c.opt.toAbsPath(dirPath))
 			c.treeItemPaths = append(c.treeItemPaths, dirPath)
 		}
@@ -303,7 +303,7 @@ func (c *Client) appendTree(item Resource) {
 			c.treeParents[parentAbsPath] = item
 			continue
 		}
-		log.Println("read tree: appending parent", parentAbsPath)
+		log.Debug("read tree: appending parent", parentAbsPath)
 		c.treeParents[parentAbsPath] = c.createDirResource(parentAbsPath)
 		c.treeParentPaths = append(c.treeParentPaths, parentAbsPath)
 	}
@@ -323,7 +323,7 @@ func (c *Client) requestBytes(method, path string, query url.Values) ([]byte, er
 	if err != nil {
 		return nil, err
 	}
-	log.Println("requestBytes code", resp.StatusCode, resp.Status)
+	log.Debug("requestBytes code", resp.StatusCode, resp.Status)
 	return ioutil.ReadAll(resp.Body)
 }
 
@@ -356,7 +356,7 @@ func (c *Client) newReq(method, path string, query url.Values) (*http.Request, e
 
 func (c *Client) createRequest(method, path string, query url.Values, body io.Reader) (*http.Request, error) {
 	uri := c.buildURI(path, query)
-	log.Printf("createRequest\n  path: %s\n  uri: %s\n  method: %s\n\n", path, uri, method)
+	log.Debugf("createRequest\n  path: %s\n  uri: %s\n  method: %s\n\n", path, uri, method)
 
 	req, err := http.NewRequest(method, uri, body)
 	if err != nil {
