@@ -1,10 +1,5 @@
 package log
 
-import (
-	"fmt"
-	stdLog "log"
-)
-
 type Level uint
 
 const (
@@ -16,78 +11,6 @@ const (
 )
 
 var DefaultLogger *Logger = Newlogger()
-
-type Logger struct {
-	level Level
-}
-
-func Newlogger() *Logger {
-	return &Logger{}
-}
-
-func (l *Logger) SetLevel(level Level) {
-	l.level = level
-}
-
-func (l *Logger) Debug(a ...interface{}) {
-	if l.level <= DebugLevel {
-		fmt.Println(a...)
-	}
-}
-
-func (l *Logger) Debugf(format string, a ...interface{}) {
-	if l.level <= DebugLevel {
-		fmt.Printf(format, a...)
-	}
-}
-
-func (l *Logger) Info(a ...interface{}) {
-	if l.level <= InfoLevel {
-		fmt.Println(a...)
-	}
-}
-
-func (l *Logger) Infof(format string, a ...interface{}) {
-	if l.level <= InfoLevel {
-		fmt.Printf(format, a...)
-	}
-}
-
-func (l *Logger) Warn(a ...interface{}) {
-	if l.level <= WarnLevel {
-		stdLog.Println(a...)
-	}
-}
-
-func (l *Logger) Warnf(format string, a ...interface{}) {
-	if l.level <= WarnLevel {
-		stdLog.Printf(format, a...)
-	}
-}
-
-func (l *Logger) Error(a ...interface{}) {
-	if l.level <= ErrorLevel {
-		stdLog.Println(a...)
-	}
-}
-
-func (l *Logger) Errorf(format string, a ...interface{}) {
-	if l.level <= ErrorLevel {
-		stdLog.Printf(format, a...)
-	}
-}
-
-func (l *Logger) Fatal(a ...interface{}) {
-	if l.level <= FatalLevel {
-		stdLog.Fatalln(a...)
-	}
-}
-
-func (l *Logger) Fatalf(format string, a ...interface{}) {
-	if l.level <= FatalLevel {
-		stdLog.Fatalf(format, a...)
-	}
-}
 
 func Debug(a ...interface{}) {
 	DefaultLogger.Debug(a...)
