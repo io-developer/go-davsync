@@ -32,7 +32,7 @@ func (l *ThreadLogger) Listen() {
 	printBuf := func() {
 		for _, item := range buf {
 			if !item.Complete && item.Level >= DebugLevel {
-				l.logger.Log(item.Level, "LOGBUF ", item.Msg)
+				l.logger.Log(item.Level, "*", item.Msg)
 			}
 		}
 		lastCount = l.logger.GetCounter()
@@ -56,7 +56,7 @@ func (l *ThreadLogger) Listen() {
 			bufItem := buf[item.Id]
 			isDelimer := bufItem.TaskId != item.TaskId || item.Complete
 			if isDelimer && !bufItem.Complete {
-				l.logger.Info("LOG ", bufItem.Msg)
+				l.logger.Info(bufItem.Msg)
 			}
 			buf[item.Id] = item
 			printBuf()

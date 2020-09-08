@@ -25,9 +25,13 @@ type OneWayOpt struct {
 }
 
 type OneWay struct {
-	opt    OneWayOpt
-	input  client.Client
-	output client.Client
+	opt          OneWayOpt
+	input        client.Client
+	output       client.Client
+	logger       *log.Logger
+	threadLogs   chan log.ThreadLog
+	threadLogger *log.ThreadLogger
+	threadLogsWg *sync.WaitGroup
 
 	inputTree  *client.TreeBuffer
 	outputTree *client.TreeBuffer
@@ -59,26 +63,60 @@ func NewOneWay(input, output client.Client, opt OneWayOpt) *OneWay {
 		opt:                opt,
 		input:              input,
 		output:             output,
+		logger:             log.DefaultLogger,
 		inputTree:          client.NewTreeBuffer(input),
 		outputTree:         client.NewTreeBuffer(output),
 		signleThreadUpload: sync.Mutex{},
 	}
 }
 
+func (s *OneWay) SetLogger(l *log.Logger) {
+	s.logger = l
+}
+
 func (s *OneWay) Sync(errors chan<- error) {
+	s.startThreadLogs()
+
 	s.readTrees(errors)
 	s.calcDiff()
 
 	s.makeDirs(errors)
+
 	s.handlePaths(s.addPaths, s.uploadFile, "UPL", errors)
 
 	if s.opt.AllowDelete {
 		s.handlePaths(s.delPaths, s.deleteOutputFile, "DEL", errors)
 	}
+
+	s.finishThreadLogs()
+}
+
+func (s *OneWay) logFmt(msg string) string {
+	return fmt.Sprintf("Sync: %s", msg)
 }
 
 func (s *OneWay) log(msg string) {
-	log.Infof("Sync: %s\n", msg)
+	log.Info(s.logFmt(msg))
+}
+
+func (s *OneWay) startThreadLogs() {
+	s.threadLogs = make(chan log.ThreadLog)
+	s.threadLogger = log.NewThreadLogger(s.threadLogs, s.opt.ThreadCount)
+	s.threadLogsWg = &sync.WaitGroup{}
+	go func() {
+		s.log("Listening thread logs..")
+
+		s.threadLogsWg.Add(1)
+		s.threadLogger.Listen()
+		s.threadLogsWg.Done()
+
+		s.log("Listening thread logs finished")
+	}()
+}
+
+func (s *OneWay) finishThreadLogs() {
+	close(s.threadLogs)
+	s.threadLogsWg.Wait()
 }
 
 func (s *OneWay) readTrees(errors chan<- error) {
@@ -145,12 +183,22 @@ func (s *OneWay) handlePaths(
 ) {
 	total := 0
 	handled := 0
-	logMain := func(msg string) {
+	logFmt := func(msg string) string {
 		progress := 0.0
 		if total > 0 {
 			progress = 100.0 * float64(handled) / float64(total)
 		}
-		s.log(fmt.Sprintf("%s %.2f%% (%d/%d): %s", logPrefix, progress, handled, total, msg))
+		return fmt.Sprintf(
+			"%.6s %5.1f%% %3d/%d:  %s",
+			logPrefix,
+			progress,
+			handled,
+			total,
+			msg,
+		)
+	}
+	logMain := func(msg string) {
+		s.log(logFmt(msg))
 	}
 
 	logMain("Handling...")
@@ -167,34 +215,50 @@ func (s *OneWay) handlePaths(
 
 	thread := func(id uint) {
 		curPath := "-"
-		logThread := func(msg string) {
-			logMain(fmt.Sprintf("[t%d] '%s': %s", id, curPath, msg))
-		}
-		logThread("Thread started")
+		taskCounter := -1
 
+		logThreadFmt := func(msg string) string {
+			return fmt.Sprintf("%-32.32s  %-32.32s", msg, curPath)
+		}
+		logThread := func(msg string) {
+			s.threadLogs <- log.ThreadLog{
+				Id:     int(id),
+				TaskId: taskCounter,
+				Level:  log.InfoLevel,
+				Msg:    s.logFmt(logFmt(logThreadFmt(msg))),
+			}
+		}
+		logThreadComplete := func() {
+			s.threadLogs <- log.ThreadLog{
+				Id:       int(id),
+				Complete: true,
+				Level:    log.InfoLevel,
+			}
+		}
 		for {
 			select {
 			case path, ok := <-pathsCh:
 				if !ok {
-					logThread("Thread exited")
+					logThreadComplete()
 					group.Done()
 					return
 				}
 				curPath = path
+				taskCounter++
 				var handleErr error = nil
 				for i := uint(1); i <= s.opt.AttemptMax; i++ {
 					if i > 1 || i == s.opt.AttemptMax {
-						logThread(fmt.Sprintf("Attempt %d / %d", i, s.opt.AttemptMax))
+						logThread(fmt.Sprintf("Attempt %d/%d", i, s.opt.AttemptMax))
 					}
 					handleErr = handler(path, logThread)
 					if handleErr == nil {
 						break
 					}
-					logThread(fmt.Sprintf("Attempt %d / %d ERR: '%v'", i, s.opt.AttemptMax, handleErr))
+					logThread(fmt.Sprintf("Attempt %d/%d ERR: '%v'", i, s.opt.AttemptMax, handleErr))
 					time.Sleep(s.opt.AttemptDelay)
 				}
 				if handleErr != nil {
-					logThread(fmt.Sprintf("ERROR '%v'", handleErr))
+					logThread(fmt.Sprintf("ERR '%v'", handleErr))
 					errors <- handleErr
 				} else {
 					logThread("Complete")
@@ -260,7 +324,7 @@ func (s *OneWay) uploadFile(path string, logFn func(string)) error {
 
 	logRead := func(r *util.Reader) {
 		logFn(fmt.Sprintf(
-			"%.2f%% (%s / %s)",
+			"%5.1f%% (%s/%s)",
 			100*r.GetProgress(),
 			util.FormatBytes(r.GetBytesRead()),
 			util.FormatBytes(r.GetBytesTotal()),
