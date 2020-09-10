@@ -28,8 +28,9 @@ type Args struct {
 	syncConfigFile string
 
 	// std sync flags
-	threads  uint
-	attempts uint
+	threads     uint
+	attempts    uint
+	allowDelete bool
 }
 
 var defaultLocalOptions = local.Options{
@@ -85,6 +86,7 @@ func parseArgs() (args Args, err error) {
 
 	flag.UintVar(&args.threads, "threads", 4, "Max threads")
 	flag.UintVar(&args.attempts, "attempts", 3, "Max attempts")
+	flag.BoolVar(&args.allowDelete, "delete", false, "Allow delete unexpexted resources in output")
 
 	flag.StringVar(&args.sync, "sync", "OneWay", "Default sync type")
 	flag.StringVar(&args.syncConfigFile, "syncConf", "", "Sync config JSON file")
@@ -135,6 +137,7 @@ func parseClientConfig(path string, outConf *ClientConfig, baseDir string) error
 func parseSyncConfig(path string, outConf *SyncConfig, args Args) error {
 	outConf.OneWay.ThreadCount = args.threads
 	outConf.OneWay.AttemptMax = args.attempts
+	outConf.OneWay.AllowDelete = args.allowDelete
 
 	if path != "" {
 		var bytes []byte

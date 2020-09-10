@@ -104,7 +104,7 @@ func (c *Adapter) requestTry(reqFn func() (*http.Request, error)) (resp *http.Re
 		if err == nil && resp != nil && resp.StatusCode != 429 {
 			return
 		}
-		log.Warn("request retry %d of %d: ", i+1, c.RetryLimit)
+		log.Warnf("request retry %d of %d: \n", i+1, c.RetryLimit)
 		time.Sleep(c.RetryDelay)
 	}
 	log.Warn("request tried out", err)
