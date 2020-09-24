@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 PWD="$(pwd)"
 ROOT="$( cd "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
