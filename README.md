@@ -1,6 +1,12 @@
 # go-davsync
 Rsync-style WebDAV synchronizer
 
+[![Docker Automated build](https://img.shields.io/docker/automated/iodeveloper/go-davsync.svg)](https://registry.hub.docker.com/r/iodeveloper/go-davsync)
+
+[![Docker Hub repository](http://dockeri.co/image/iodeveloper/go-davsync)](https://registry.hub.docker.com/r/iodeveloper/go-davsync)
+
+`iodeveloper/go-davsync:latest`
+
 ## Usage
 * `-i /some/input/dir` - path of source directory. Default is local `./`
 * `-iconf /input/config.json` - path to secrets and options. Default none - means local filesystem source
@@ -52,7 +58,7 @@ files
 docker run --rm                             \
     -v $(pwd)/files:/input                  \
     -v $(pwd)/davconf.json:/davconf.json    \
-    go-davsync:local                        \
+    iodeveloper/go-davsync:latest           \
         -i /input                           \
         -o "/Uploads/01"                    \
         -oconf /davconf.json                \
