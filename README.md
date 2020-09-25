@@ -51,9 +51,17 @@ files
     },
 }
 ```
-* Specify remote destination directory with `-o /Uploads/01/`
-* Set desired max parallel threads `-threads 4`
-* Run
+* Specify remote destination directory `-o /Uploads/01/`
+* Set desired max number of threads `-threads 4`
+* Run with local binary (built by `build.sh` or `build-with-docker.sh`):
+```bash
+{path_to_davsync_folder}/bin/davsync    \
+    -i $(pwd)/files                     \
+    -o "/Uploads/01"                    \
+    -oconf $(pwd)/davconf.json          \
+    -threads 4
+```
+* Or run the same with docker without building:
 ```bash
 docker run --rm                             \
     -v $(pwd)/files:/input                  \
@@ -64,7 +72,7 @@ docker run --rm                             \
         -oconf /davconf.json                \
         -threads 4
 ```
-* Output should be like:
+* Output should be like this:
 ```
 Sync: Making dirs...
 Sync:   make dir /
